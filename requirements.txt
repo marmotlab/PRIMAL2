@@ -9,7 +9,6 @@ backcall==0.1.0
 beautifulsoup4==4.9.1
 blessings==1.7
 cachetools==4.1.1
-cairocffi===file-.cairocffi-VERSION
 CairoSVG==2.4.2
 certifi==2020.4.5.2
 cffi==1.14.0
