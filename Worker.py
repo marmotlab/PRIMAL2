@@ -31,6 +31,8 @@ class Worker():
         self.groupLock = groupLock
         self.learningAgent = learningAgent
         self.sess = sess
+        self.loss_metrics = None
+        self.perf_metrics = None
         self.allGradients = []
 
     def calculateImitationGradient(self, rollout, episode_count):
@@ -367,7 +369,7 @@ class Worker():
                 list of length num_agents with each sublist a list of tuples
                 (observation[0],observation[1],optimal_action,reward)"""   
 
-        global ACTION_SKIPPING, GIF_frames, SAVE_IL_GIF , IL_GIF_PROB 
+        global GIF_frames, SAVE_IL_GIF , IL_GIF_PROB 
         saveGIF= False  
         if np.random.rand() < IL_GIF_PROB  : 
             saveGIF= True     
@@ -412,8 +414,6 @@ class Worker():
                             print(pos_buffer) 
                             print(goal_buffer) 
                             actions[agent_id] = dir2action(diff)                                
-                    if ACTION_SKIPPING :
-                        train_imitation[agent_id] = (0==self.action_skipping_state(agent_id) ) 
                 all_obs, _ = self.env.step_all(actions)
                 for i in range(self.num_workers) :
                     agent_id = i+1

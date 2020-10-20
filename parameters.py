@@ -46,7 +46,7 @@ PRIMING_LENGTH          = 0   # number of episodes at the beginning to train onl
 MSTAR_CALL_FREQUENCY    = 1
 
 # observation variables
-NUM_CHANNEL             = 4 + NUM_FUTURE_STEPS
+NUM_CHANNEL             = 8 + NUM_FUTURE_STEPS
 
 # others
 EPISODE_START           = episode_count
