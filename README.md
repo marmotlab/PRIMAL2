@@ -1,28 +1,32 @@
 # PRIMAL_2: Pathfinding via Reinforcement and Imitation Multi_agent Learning - Lifelong
 
-## Setting up Code
-- cd into the od_mstar3 folder.
-- python3 setup.py build_ext --inplace
-- Check by going back to the root of the git folder, running python3 and "import cpp_mstar"
+## Description
+- This branch is for model testing and testing map generation.
+- You are currently at continuous testing branch, where agents will be assigned new goals after they finish their current
+goals. Continuous testing will end in a fixed number of time step. maxLen of each episode can be changed at get_maxLength.
+function in TestingEnv.py.
+- We provide M*, PRIMAL1 and PRIMAL2 for testing. You can inherit MstarContinuousPlanner or RL_Planner in TestingEnv.py to 
+set up testing for your own planner.
+- While using RL_Planner, do make sure your model fits correct num_layers of the network, observation_size and num_future_steps!
+-Good luck and have fun! (by Zhiyao Luo)
 
+## Setting up Code
+- PRIMAL2_env.yaml contains all necessary packages for PRIMAL2 training and testing
+
+- In addition, there are two C++ stuffs you need to build yourself:
+
+        cd into the od_mstar3 folder.
+        python3 setup.py build_ext --inplace
+        Check by going back to the root of the git folder, running python3 and "import cpp_mstar"
+        
+        cd into the astarlib3 folder.
+        python3 setup.py build_ext --inplace
+        Check by going back to the root of the git folder, running "from astarlib3.astarlib import aStar"
 
 ## Running Code
-- Pick appropriate number of meta agents via variables `NUM_META_AGENTS` and `NUM_IL_META_AGENTS` in `parameters.py`
-- The number of RL meta-agents is implicity defined by the difference between total meta-agents and IL meta-agents (`NUM_RL_META_AGENTS` = `NUM_META_AGENTS` - `NUM_IL_META_AGENTS`)
-- Name training run via `training_version` in `parameters.py`
-- call `python driver.py`
-
-## Key Files
-- `parameters.py` - Training parameters.
-- `driver.py` - Driver of program. Holds global network for A3C.
-- `Runner.py` - Compute node for training. Maintains a single meta agent.
-- `Worker.py` - A single agent in a simulation environment. Majority of episode computation, including gradient calculation, occurs here.
-- `Ray_ACNet.py` - Defines network architecture.
-- `Env_Builder.py` - Defines the lower level structure of the Lifelong MAPF environment for PRIMAL2, including the world and agents class.
-- `PRIMAL2Env.py` - Defines the high level environment class. 
-- `Map_Generator2.py` - Algorithm used to generate worlds, parameterized by world size, obstacle density and wall components.
-- `PRIMAL2Observer.py` - Defines the decentralized observation of each PRIMAL2 agent.
-- `Obsever_Builder.py` - The high level observation class
+- call 'python TestingEnv.py' to run the testing of a single map
+- call 'python TestGenerator.py' to run testing map generation
+- call 'python MultiProcessingTestDriver.py' to run a series of testing maps by mp
 
 
 ## Other Links

@@ -87,8 +87,13 @@ auto/
 
 # Python stuffs
 ###################
+decaytest.py
+new_testing_envs/
+testing_env*
+tests_*
 __pycache__/
 results/
 .idea/
+new_testing_envs/
 model_v1_oIL_no_prune/checkpoint
 .vscode/settings.json

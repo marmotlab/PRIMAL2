@@ -2,15 +2,28 @@ import copy
 from operator import sub, add
 import gym
 import numpy as np
-import math, time
+import math
 import warnings
+import time
 from od_mstar3.col_set_addition import OutOfTimeError, NoSolutionError
 from od_mstar3 import od_mstar
-from od_mstar3 import cpp_mstar
+
+try:
+    from od_mstar3 import cpp_mstar
+except ImportError:
+    raise ImportError('cpp_mstar not compiled. Please refer to README')
+try:
+    from astarlib3.astarlib import aStar
+
+    USE_Cython_ASTAR = True
+except ImportError:
+    USE_Cython_ASTAR = False
+    raise ImportError('cpp_aStar not compiled. Please refer to README. Switched to py-astar automatically')
 from GroupLock import Lock
 from matplotlib.colors import *
 from gym.envs.classic_control import rendering
 import imageio
+
 from gym import spaces
 
 
@@ -22,7 +35,6 @@ def make_gif(images, fname):
 
 def opposite_actions(action, isDiagonal=False):
     if isDiagonal:
-        checking_table = {0: -1, 1: 3, 2: 4, 3: 1, 4: 2}
         raise NotImplemented
     else:
         checking_table = {0: -1, 1: 3, 2: 4, 3: 1, 4: 2}
@@ -61,7 +73,7 @@ def get_key(dict, value):
     return [k for k, v in dict.items() if v == value]
 
 
-def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bool = False):
+def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isCPython):
     """
     returns a numpy array of same dims as map with the distance to the goal from each coord
     :param map: a n by m np array, where -1 denotes obstacle
@@ -84,7 +96,7 @@ def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bo
 
     def getNeighbors(node):
         # return set of neighbors to the given node
-        n_moves = 9 if isDiagonal else 5
+        n_moves = 5
         neighbors = set()
         for move in range(1, n_moves):  # we dont want to include 0 or it will include itself
             direction = action2dir(move)
@@ -100,67 +112,71 @@ def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bo
             neighbors.add((ax + dx, ay + dy))
         return neighbors
 
-    # NOTE THAT WE REVERSE THE DIRECTION OF SEARCH SO THAT THE GSCORE WILL BE DISTANCE TO GOAL
-    start, goal = goal, start
-    start, goal = tuple(start), tuple(goal)
-    # The set of nodes already evaluated
-    closedSet = set()
+    if not isCPython:
+        # NOTE THAT WE REVERSE THE DIRECTION OF SEARCH SO THAT THE GSCORE WILL BE DISTANCE TO GOAL
+        start, goal = goal, start
+        start, goal = tuple(start), tuple(goal)
+        # The set of nodes already evaluated
+        closedSet = set()
 
-    # The set of currently discovered nodes that are not evaluated yet.
-    # Initially, only the start node is known.
-    openSet = set()
-    openSet.add(start)
+        # The set of currently discovered nodes that are not evaluated yet.
+        # Initially, only the start node is known.
+        openSet = set()
+        openSet.add(start)
 
-    # For each node, which node it can most efficiently be reached from.
-    # If a node can be reached from many nodes, cameFrom will eventually contain the
-    # most efficient previous step.
-    cameFrom = dict()
+        # For each node, which node it can most efficiently be reached from.
+        # If a node can be reached from many nodes, cameFrom will eventually contain the
+        # most efficient previous step.
+        cameFrom = dict()
 
-    # For each node, the cost of getting from the start node to that node.
-    gScore = dict()  # default value infinity
+        # For each node, the cost of getting from the start node to that node.
+        gScore = dict()  # default value infinity
 
-    # The cost of going from start to start is zero.
-    gScore[start] = 0
+        # The cost of going from start to start is zero.
+        gScore[start] = 0
 
-    # For each node, the total cost of getting from the start node to the goal
-    # by passing by that node. That value is partly known, partly heuristic.
-    fScore = dict()  # default infinity
+        # For each node, the total cost of getting from the start node to the goal
+        # by passing by that node. That value is partly known, partly heuristic.
+        fScore = dict()  # default infinity
 
-    # our heuristic is euclidean distance to goal
-    heuristic_cost_estimate = lambda x, y: math.hypot(x[0] - y[0], x[1] - y[1])
+        # our heuristic is euclidean distance to goal
+        heuristic_cost_estimate = lambda x, y: math.hypot(x[0] - y[0], x[1] - y[1])
 
-    # For the first node, that value is completely heuristic.
-    fScore[start] = heuristic_cost_estimate(start, goal)
+        # For the first node, that value is completely heuristic.
+        fScore[start] = heuristic_cost_estimate(start, goal)
 
-    while len(openSet) != 0:
-        # current = the node in openSet having the lowest fScore value
-        current = lowestF(fScore, openSet)
+        while len(openSet) != 0:
+            # current = the node in openSet having the lowest fScore value
+            current = lowestF(fScore, openSet)
 
-        openSet.remove(current)
-        closedSet.add(current)
-        for neighbor in getNeighbors(current):
-            if neighbor in closedSet:
-                continue  # Ignore the neighbor which is already evaluated.
+            openSet.remove(current)
+            closedSet.add(current)
+            for neighbor in getNeighbors(current):
+                if neighbor in closedSet:
+                    continue  # Ignore the neighbor which is already evaluated.
 
-            if neighbor not in openSet:  # Discover a new node
-                openSet.add(neighbor)
+                if neighbor not in openSet:  # Discover a new node
+                    openSet.add(neighbor)
 
-            # The distance from start to a neighbor
-            # in our case the distance between is always 1
-            tentative_gScore = gScore[current] + 1
-            if tentative_gScore >= gScore.get(neighbor, 2 ** 31 - 1):
-                continue  # This is not a better path.
+                # The distance from start to a neighbor
+                # in our case the distance between is always 1
+                tentative_gScore = gScore[current] + 1
+                if tentative_gScore >= gScore.get(neighbor, 2 ** 31 - 1):
+                    continue  # This is not a better path.
 
-            # This path is the best until now. Record it!
-            cameFrom[neighbor] = current
-            gScore[neighbor] = tentative_gScore
-            fScore[neighbor] = gScore[neighbor] + heuristic_cost_estimate(neighbor, goal)
+                # This path is the best until now. Record it!
+                cameFrom[neighbor] = current
+                gScore[neighbor] = tentative_gScore
+                fScore[neighbor] = gScore[neighbor] + heuristic_cost_estimate(neighbor, goal)
 
-            # parse through the gScores
-    Astar_map = map.copy()
-    for (i, j) in gScore:
-        Astar_map[i, j] = gScore[i, j]
-    return Astar_map
+                # parse through the gScores
+        Astar_map = map.copy()
+        for (i, j) in gScore:
+            Astar_map[i, j] = gScore[i, j]
+        return Astar_map
+    else:
+        planner = aStar(array=map)  # where 0 is free space, -1 is obstacle
+        return planner.getAstarDistanceMap(goal)  # should give you the distance map for a given goal
 
 
 class Agent:
@@ -536,9 +552,9 @@ class World:
             assert len(manual_pos.keys()) == len(id_list)
             init_poss = [manual_pos[agentID] for agentID in id_list]
         assert len(init_poss) == len(id_list)
+        self.agents_init_pos = {}
         for idx, agentID in enumerate(id_list):
             self.agents[agentID].ID = agentID
-            self.agents_init_pos = {}
             if self.state[init_poss[idx][0], init_poss[idx][1]] in [0, agentID] \
                     and self.goals_map[init_poss[idx][0], init_poss[idx][1]] != agentID:
                 self.state[init_poss[idx][0], init_poss[idx][1]] = agentID
@@ -549,127 +565,10 @@ class World:
                 raise ValueError('invalid manual_pos for agent' + str(agentID) + ' at: ' + str(init_poss[idx]))
             self.agents[agentID].move(init_poss[idx])
             self.agents[agentID].distanceMap = getAstarDistanceMap(self.state, self.agents[agentID].position,
-                                                                   self.agents[agentID].goal_pos)
+                                                                   self.agents[agentID].goal_pos,
+                                                                   isCPython=USE_Cython_ASTAR)
 
-    def put_goals(self, id_list, manual_pos=None):
-        """
-        put a goal of single agent in the env, if the goal already exists, remove that goal and put a new one
-        :param manual_pos: a dict of manual_pos {agentID: (x, y)}
-        :param id_list: a list of agentID
-        :return: an Agent object
-        """
-
-        def random_goal_pos(previous_goals=None, distance=None):
-            next_goal_buffer = {agentID: self.agents[agentID].next_goal for agentID in range(1,self.num_agents+1)}
-            curr_goal_buffer = {agentID: self.agents[agentID].goal_pos for agentID in range(1,self.num_agents+1)}
-            if previous_goals is None:
-                previous_goals = {agentID: None for agentID in id_list}
-            if distance is None:
-                distance = self.goal_generate_distance
-            free_for_all = np.logical_and(self.state == 0, self.goals_map == 0)
-            # print(previous_goals)
-            if not all(previous_goals.values()):  # they are new born agents
-                free_space = np.argwhere(free_for_all == 1)
-                init_idx = np.random.choice(len(free_space), size=len(id_list), replace=False)
-                new_goals = {agentID: tuple(free_space[init_idx[agentID - 1]]) for agentID in id_list}
-                return new_goals
-            else:
-                new_goals = {}
-                for agentID in id_list:
-                    free_on_agents = np.logical_and(self.state > 0, self.state != agentID)
-                    free_spaces_for_previous_goal = np.logical_or(free_on_agents, free_for_all)
-                   # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
-                    if distance > 0:
-                        previous_x, previous_y = previous_goals[agentID]
-                        x_lower_bound = (previous_x - distance) if (previous_x - distance) > 0 else 0
-                        x_upper_bound = previous_x + distance + 1
-                        y_lower_bound = (previous_y - distance) if (previous_x - distance) > 0 else 0
-                        y_upper_bound = previous_y + distance + 1
-                        free_spaces_for_previous_goal[x_lower_bound:x_upper_bound, y_lower_bound:y_upper_bound] = False
-                    free_spaces_for_previous_goal = list(np.argwhere(free_spaces_for_previous_goal == 1))
-                    free_spaces_for_previous_goal = [pos.tolist() for pos in free_spaces_for_previous_goal]
-
-                    try:
-                        unique = False 
-                        counter = 0 
-                        while unique == False and counter<500: 
-                            init_idx = np.random.choice(len(free_spaces_for_previous_goal))
-                            init_pos = free_spaces_for_previous_goal[init_idx]
-                            unique= True 
-                            if tuple(init_pos) in next_goal_buffer.values() or tuple(init_pos) in curr_goal_buffer.values() or tuple(init_pos) in new_goals.values()  : 
-                                unique = False 
-                            if previous_goals is not None :
-                                if tuple(init_pos) in previous_goals.values() :
-                                    unique = False 
-                            counter +=1     
-                        if counter >=500 :
-                            print('Hard to find Non Conflicting Goal')    
-                        new_goals.update({agentID: tuple(init_pos)})
-                    except ValueError:
-                        print('wrong goal')
-                        self.reset_world()
-                        print(self.agents[1].position)
-                        self.init_agents_and_goals()
-                        return None
-                return new_goals
-
-        previous_goals = {agentID: self.agents[agentID].goal_pos for agentID in id_list}
-        if manual_pos is None:
-            new_goals = random_goal_pos(previous_goals, distance=self.goal_generate_distance)
-        else:
-            new_goals = manual_pos
-        if new_goals is not None:  # recursive breaker
-            refresh_distance_map = False
-            for agentID in id_list:
-                if self.state[new_goals[agentID][0], new_goals[agentID][1]] >= 0:
-                    if self.agents[agentID].next_goal is None:  # no next_goal to use
-                        # set goals_map
-                        self.goals_map[new_goals[agentID][0], new_goals[agentID][1]] = agentID
-                        # set agent.goal_pos
-                        self.agents[agentID].goal_pos = (new_goals[agentID][0], new_goals[agentID][1])
-                        # set agent.next_goal
-                        new_next_goals = random_goal_pos(new_goals, distance=self.goal_generate_distance)
-                        if new_next_goals is None:
-                            return None
-                        self.agents[agentID].next_goal = (new_next_goals[agentID][0], new_next_goals[agentID][1])
-                        # remove previous goal
-                        if previous_goals[agentID] is not None:
-                            self.goals_map[previous_goals[agentID][0], previous_goals[agentID][1]] = 0
-                    else:  # use next_goal as new goal
-                        # set goals_map
-                        self.goals_map[self.agents[agentID].next_goal[0], self.agents[agentID].next_goal[1]] = agentID
-                        # set agent.goal_pos
-                        self.agents[agentID].goal_pos = self.agents[agentID].next_goal
-                        # set agent.next_goal
-                        self.agents[agentID].next_goal = (
-                            new_goals[agentID][0], new_goals[agentID][1])  # store new goal into next_goal
-                        # remove previous goal
-                        if previous_goals[agentID] is not None:
-                            self.goals_map[previous_goals[agentID][0], previous_goals[agentID][1]] = 0
-                else:
-                    print(self.state)
-                    print(self.goals_map)
-                    raise ValueError('invalid manual_pos for goal' + str(agentID) + ' at: ', str(new_goals[agentID]))
-                if previous_goals[agentID] is not None:  # it has a goal!
-                    if previous_goals[agentID] != self.agents[agentID].position:
-                        print(self.state)
-                        print(self.goals_map)
-                        print(previous_goals)
-                        raise RuntimeError("agent hasn't finished its goal but asking for a new goal!")
-
-                    refresh_distance_map = True
-
-                # compute distance map
-                self.agents[agentID].next_distanceMap = getAstarDistanceMap(self.state, self.agents[agentID].goal_pos,
-                                                                            self.agents[agentID].next_goal)
-                if refresh_distance_map:
-                    self.agents[agentID].distanceMap = getAstarDistanceMap(self.state, self.agents[agentID].position,
-                                                                           self.agents[agentID].goal_pos)
-            return 1
-        else:
-            return None
-
-    def CheckCollideStatus(self, movement_dict):
+    def CheckCollideStatus(self, movement_dict, check_col=True):
         """
         WARNING: ONLY NON-DIAGONAL IS IMPLEMENTED
         return collision status and predicted next positions, do not move agent directly
@@ -687,6 +586,23 @@ class World:
         newPos_dict = {}
         status_dict = {agentID: None for agentID in range(1, self.num_agents + 1)}
         not_checked_list = list(range(1, self.num_agents + 1))
+
+        # evaluation/testing only with continuous M*:
+        if not check_col:
+            # set Assumed_newPos_dict
+            for agentID in range(1, self.num_agents + 1):
+                direction_vector = action2dir(movement_dict[agentID])
+                newPos = tuple_plus(self.getPos(agentID), direction_vector)
+                Assumed_newPos_dict.update({agentID: newPos})
+
+            # all actions are assumed valid
+            for agentID in copy.deepcopy(not_checked_list):
+                status_dict[agentID] = 1 if Assumed_newPos_dict[agentID] == self.agents[agentID].goal_pos else 0
+                newPos_dict.update({agentID: Assumed_newPos_dict[agentID]})
+                not_checked_list.remove(agentID)
+            assert not not_checked_list
+
+            return status_dict, newPos_dict
 
         # detect env collision
         for agentID in range(1, self.num_agents + 1):
@@ -752,10 +668,148 @@ class World:
         return status_dict, newPos_dict
 
 
+class TestWorld(World):
+    def __init__(self, map_generator, world_info, isDiagonal=False, isConventional=False):
+        super().__init__(map_generator, num_agents=None, isDiagonal=isDiagonal)
+        [self.state, self.goals_map], \
+        self.agents_init_pos, self.corridor_map, self.corridors, self.agents = world_info
+        self.corridor_map, self.corridors = self.corridor_map[()], self.corridors[()]
+        # print("Initial Positions : ", self.agents_init_pos)
+        self.num_agents = len(self.agents_init_pos.keys())
+        self.isConventional = isConventional
+
+    def reset_world(self):
+        pass
+
+    def init_agents_and_goals(self):
+        pass
+
+    def put_goals(self, id_list, manual_pos=None):
+        """
+        NO DISTANCE MAPS FOR MSTAR!!
+        """
+
+        def random_goal_pos(previous_goals=None, distance=None):
+            next_goal_buffer = {agentID: self.agents[agentID].next_goal for agentID in range(1, self.num_agents + 1)}
+            curr_goal_buffer = {agentID: self.agents[agentID].goal_pos for agentID in range(1, self.num_agents + 1)}
+            if previous_goals is None:
+                previous_goals = {agentID: None for agentID in id_list}
+            if distance is None:
+                distance = self.goal_generate_distance
+            free_for_all = np.logical_and(self.state == 0, self.goals_map == 0)
+            # print(previous_goals)
+            if not all(previous_goals.values()):  # they are new born agents
+                free_space = np.argwhere(free_for_all == 1)
+                init_idx = np.random.choice(len(free_space), size=len(id_list), replace=False)
+                new_goals = {agentID: tuple(free_space[init_idx[agentID - 1]]) for agentID in id_list}
+                return new_goals
+            else:
+                new_goals = {}
+                for agentID in id_list:
+                    free_on_agents = np.logical_and(self.state > 0, self.state != agentID)
+                    free_spaces_for_previous_goal = np.logical_or(free_on_agents, free_for_all)
+                    # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
+                    if distance > 0:
+                        previous_x, previous_y = previous_goals[agentID]
+                        x_lower_bound = (previous_x - distance) if (previous_x - distance) > 0 else 0
+                        x_upper_bound = previous_x + distance + 1
+                        y_lower_bound = (previous_y - distance) if (previous_x - distance) > 0 else 0
+                        y_upper_bound = previous_y + distance + 1
+                        free_spaces_for_previous_goal[x_lower_bound:x_upper_bound, y_lower_bound:y_upper_bound] = False
+                    free_spaces_for_previous_goal = list(np.argwhere(free_spaces_for_previous_goal == 1))
+                    free_spaces_for_previous_goal = [pos.tolist() for pos in free_spaces_for_previous_goal]
+
+                    try:
+                        unique = False
+                        counter = 0
+                        while unique == False and counter < 500:
+                            init_idx = np.random.choice(len(free_spaces_for_previous_goal))
+                            init_pos = free_spaces_for_previous_goal[init_idx]
+                            unique = True
+                            if tuple(init_pos) in next_goal_buffer.values() or tuple(
+                                    init_pos) in curr_goal_buffer.values() or tuple(init_pos) in new_goals.values():
+                                unique = False
+                            if previous_goals is not None:
+                                if tuple(init_pos) in previous_goals.values():
+                                    unique = False
+                            counter += 1
+                        if counter >= 500:
+                            print('Hard to find Non Conflicting Goal')
+                        new_goals.update({agentID: tuple(init_pos)})
+                    except ValueError:
+                        print('wrong goal')
+                        self.reset_world()
+                        print(self.agents[1].position)
+                        self.init_agents_and_goals()
+                        return None
+                return new_goals
+
+        previous_goals = {agentID: self.agents[agentID].goal_pos for agentID in id_list}
+        if manual_pos is None:
+            new_goals = random_goal_pos(previous_goals, distance=self.goal_generate_distance)
+        else:
+            new_goals = manual_pos
+        if new_goals is not None:  # recursive breaker
+            refresh_distance_map = False
+            for agentID in id_list:
+                if self.state[new_goals[agentID][0], new_goals[agentID][1]] >= 0:
+                    if self.agents[agentID].next_goal is None:  # no next_goal to use
+                        # set goals_map
+                        self.goals_map[new_goals[agentID][0], new_goals[agentID][1]] = agentID
+                        # set agent.goal_pos
+                        self.agents[agentID].goal_pos = (new_goals[agentID][0], new_goals[agentID][1])
+                        # set agent.next_goal
+                        new_next_goals = random_goal_pos(new_goals, distance=self.goal_generate_distance)
+                        if new_next_goals is None:
+                            return None
+                        self.agents[agentID].next_goal = (new_next_goals[agentID][0], new_next_goals[agentID][1])
+                        # remove previous goal
+                        if previous_goals[agentID] is not None:
+                            self.goals_map[previous_goals[agentID][0], previous_goals[agentID][1]] = 0
+                    else:  # use next_goal as new goal
+                        # set goals_map
+                        self.goals_map[self.agents[agentID].next_goal[0], self.agents[agentID].next_goal[1]] = agentID
+                        # set agent.goal_pos
+                        self.agents[agentID].goal_pos = self.agents[agentID].next_goal
+                        # set agent.next_goal
+                        self.agents[agentID].next_goal = (
+                            new_goals[agentID][0], new_goals[agentID][1])  # store new goal into next_goal
+                        # remove previous goal
+                        if previous_goals[agentID] is not None:
+                            self.goals_map[previous_goals[agentID][0], previous_goals[agentID][1]] = 0
+                else:
+                    print(self.state)
+                    print(self.goals_map)
+                    raise ValueError('invalid manual_pos for goal' + str(agentID) + ' at: ', str(new_goals[agentID]))
+                if previous_goals[agentID] is not None:  # it has a goal!
+                    if previous_goals[agentID] != self.agents[agentID].position:
+                        print(self.state)
+                        print(self.goals_map)
+                        print(previous_goals)
+                        raise RuntimeError("agent hasn't finished its goal but asking for a new goal!")
+
+                    refresh_distance_map = True
+
+                # compute distance map
+                if not self.isConventional:
+                    self.agents[agentID].next_distanceMap = getAstarDistanceMap(self.state,
+                                                                                self.agents[agentID].goal_pos,
+                                                                                self.agents[agentID].next_goal,
+                                                                                isCPython=USE_Cython_ASTAR)
+                    if refresh_distance_map:
+                        self.agents[agentID].distanceMap = getAstarDistanceMap(self.state,
+                                                                               self.agents[agentID].position,
+                                                                               self.agents[agentID].goal_pos,
+                                                                               isCPython=USE_Cython_ASTAR)
+            return 1
+        else:
+            return None
+
+
 class MAPFEnv(gym.Env):
     metadata = {"render.modes": ["human", "ansi"]}
 
-    def __init__(self, observer, map_generator, num_agents=None,
+    def __init__(self, observer, map_generator, num_agents,
                  IsDiagonal=False, frozen_steps=0, isOneShot=False):
         self.observer = observer
         self.map_generator = map_generator
@@ -770,7 +824,6 @@ class MAPFEnv(gym.Env):
         self.isStandingOnGoal = {i: False for i in range(1, self.num_agents + 1)}
 
         self.individual_rewards = {i: 0 for i in range(1, self.num_agents + 1)}
-        self.mutex = Lock()
         self.GIF_frame = []
         if IsDiagonal:
             self.action_space = spaces.Tuple([spaces.Discrete(self.num_agents), spaces.Discrete(9)])
@@ -794,8 +847,14 @@ class MAPFEnv(gym.Env):
     def getLastMovements(self):
         return {i: self.world.agents[i].position_history(-1) for i in range(1, self.num_agents + 1)}
 
-    def set_world(self):
+    def getDone(self):
+        if self.isOneShot:
+            return sum(
+                [self.world.getDone(agentID) > 0 for agentID in range(1, self.num_agents + 1)]) == self.num_agents
+        else:
+            raise NotImplementedError("there is no definition of getDone in continuous world")
 
+    def set_world(self):
         self.world = World(self.map_generator, num_agents=self.num_agents, isDiagonal=self.IsDiagonal)
         self.num_agents = self.world.num_agents
         self.observer.set_env(self.world)
@@ -828,7 +887,7 @@ class MAPFEnv(gym.Env):
             raise ValueError("Invalid agent_id given")
         return self.obs_dict
 
-    def step_all(self, movement_dict):
+    def step_all(self, movement_dict, observe=True, check_col=True):
         """
         Agents are forced to freeze self.frozen_steps steps if they are standing on their goals.
         The new goal will be generated at the FIRST step it remains on its goal.
@@ -848,7 +907,7 @@ class MAPFEnv(gym.Env):
                 assert movement_dict[agentID] in list(range(5)) if self.IsDiagonal else list(range(9)), \
                     'action not in action space'
 
-        status_dict, newPos_dict = self.world.CheckCollideStatus(movement_dict)
+        status_dict, newPos_dict = self.world.CheckCollideStatus(movement_dict, check_col=check_col)
         self.world.state[self.world.state > 0] = 0  # remove agents in the map
         put_goal_list = []
         freeze_list = []
@@ -880,7 +939,11 @@ class MAPFEnv(gym.Env):
 
             for frozen_agent in freeze_list:
                 free_agents.remove(frozen_agent)
-        return self._observe(free_agents), self.individual_rewards
+
+        if observe:
+            return self._observe(free_agents), self.individual_rewards
+        elif check_col:
+            return None, self.individual_rewards
 
     def give_moving_reward(self, agentID):
         raise NotImplementedError
@@ -900,9 +963,7 @@ class MAPFEnv(gym.Env):
         mstar_path = None
         start_time = time.time()
         try:
-            max_time += time_limit
-            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit/5.0)
-
+            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit)
         except OutOfTimeError:
             # M* timed out
             print("timeout")
@@ -914,16 +975,15 @@ class MAPFEnv(gym.Env):
             print('World', world)
             print('Start Pos', start_positions)
             print('Goals', goals)
-
         except:
             c_time = time.time() - start_time
             if c_time > time_limit:
                 return mstar_path
 
-            #print("cpp_mstar crash most likely... trying python mstar instead")
+            print("cpp_mstar crash most likely... trying python mstar instead")
             try:
                 mstar_path = od_mstar.find_path(world, start_positions, goals,
-                                                inflation=inflation, time_limit=time_limit)
+                                                inflation=inflation, time_limit=5 * time_limit)
             except OutOfTimeError:
                 # M* timed out
                 print("timeout")
@@ -935,9 +995,6 @@ class MAPFEnv(gym.Env):
                 print('World', world)
                 print('Start Pos', start_positions)
                 print('Goals', goals)
-            except:
-                print("Unknown bug?!")
-
         return mstar_path
 
     def _add_rendering_entry(self, entry, permanent=False):
@@ -1063,13 +1120,13 @@ class MAPFEnv(gym.Env):
 if __name__ == "__main__":
     from FlatlandObserver import FlatlandObserver
     from Map_Generator import *
-    from Primal2Env import Primal2Env
+    from FlatlandEnv import FlatlandEnv
     import numpy as np
     from tqdm import tqdm
 
     for _ in tqdm(range(2000)):
         n_agents = np.random.randint(low=25, high=30)
-        env = Primal2Env(num_agents=n_agents,
+        env = FlatlandEnv(num_agents=n_agents,
                           observer=FlatlandObserver(observation_size=3),
                           map_generator=maze_generator(env_size=(10, 30),
                                                        wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
