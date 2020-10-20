@@ -24,7 +24,7 @@ class Primal2Env(MAPFEnv):
                                           num_agents=num_agents,
                                           IsDiagonal=IsDiagonal, frozen_steps=frozen_steps, isOneShot=isOneShot)
 
-    def _reset(self, new_generator=None):
+    def _reset(self, new_generator=None, *args):
         if new_generator is None:
             self.set_world()
         else:
@@ -34,6 +34,7 @@ class Primal2Env(MAPFEnv):
             self.observer.set_env(self.world)
 
         self.fresh = True
+        self.done = False
         if self.viewer is not None:
             self.viewer = None
 
@@ -80,6 +81,28 @@ class Primal2Env(MAPFEnv):
                 if pos != position:
                     return pos
             return None
+
+        VANILLA_VALID_ACTIONS = True   
+
+        if VANILLA_VALID_ACTIONS== True :
+            available_actions = []
+            pos = self.world.getPos(agent_ID)
+            available_actions.append(0)  # standing still always allowed 
+            num_actions = 4 + 1 if not self.IsDiagonal else 8 + 1
+            for action in range(1, num_actions):
+                direction = action2dir(action)
+                new_pos = tuple_plus(direction, pos)
+                lastpos = None
+                try:
+                    lastpos = self.world.agents[agent_ID].position_history[-2]
+                except:
+                    pass
+                if new_pos == lastpos:
+                    continue
+                if self.world.state[new_pos[0], new_pos[1]] == 0:
+                    available_actions.append(action)
+
+            return available_actions
 
         available_actions = []
         pos = self.world.getPos(agent_ID)
@@ -194,22 +217,25 @@ if __name__ == '__main__':
               [-1, 0, -1, 0, 0, 0, -1],
               [-1, 2, -1, 0, 0, 0, -1],
               [-1, -1, -1, -1, -1, -1, -1]]
-    n_agents = 3
+    n_agents = 20 
     env = Primal2Env(num_agents=n_agents,
                       observer=Primal2Observer(observation_size=5),
-                      map_generator=maze_generator(env_size=(8, 10),
-                                                   wall_components=(3, 8), obstacle_density=(0.3, 0.7)),
-                      IsDiagonal=False)
-    print(env.world.state)
-    print(env.world.goals_map)
+                      map_generator=maze_generator(env_size=(6, 7),
+                                                   wall_components=(5, 10), obstacle_density=(0.3, 0.7)),
+                      IsDiagonal=False,isOneShot=True )
+
     c = 0
     a = c
     b = c
+    print(env.world.state)
+    print(env.world.goals_map)
     for j in range(0, 50):
-          movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c}
-          env.step_all(movement)
-          obs = env._observe()
-
-          print(env.world.state)
-          a = int(input())
-          b = int(input())
+         movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c}
+         env.step_all(movement)
+         obs = env._observe()
+         print(env.world.state)
+         a = int(input())
+         b = int(input())
+         c = int(input())
+         if c!=0 :
+            print(obs[18]) 

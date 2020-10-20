@@ -2,11 +2,10 @@ import copy
 from operator import sub, add
 import gym
 import numpy as np
-import math, time
+import math
 import warnings
 from od_mstar3.col_set_addition import OutOfTimeError, NoSolutionError
 from od_mstar3 import od_mstar
-from od_mstar3 import cpp_mstar
 from GroupLock import Lock
 from matplotlib.colors import *
 from gym.envs.classic_control import rendering
@@ -536,9 +535,9 @@ class World:
             assert len(manual_pos.keys()) == len(id_list)
             init_poss = [manual_pos[agentID] for agentID in id_list]
         assert len(init_poss) == len(id_list)
+        self.agents_init_pos = {}
         for idx, agentID in enumerate(id_list):
             self.agents[agentID].ID = agentID
-            self.agents_init_pos = {}
             if self.state[init_poss[idx][0], init_poss[idx][1]] in [0, agentID] \
                     and self.goals_map[init_poss[idx][0], init_poss[idx][1]] != agentID:
                 self.state[init_poss[idx][0], init_poss[idx][1]] = agentID
@@ -560,8 +559,6 @@ class World:
         """
 
         def random_goal_pos(previous_goals=None, distance=None):
-            next_goal_buffer = {agentID: self.agents[agentID].next_goal for agentID in range(1,self.num_agents+1)}
-            curr_goal_buffer = {agentID: self.agents[agentID].goal_pos for agentID in range(1,self.num_agents+1)}
             if previous_goals is None:
                 previous_goals = {agentID: None for agentID in id_list}
             if distance is None:
@@ -578,7 +575,6 @@ class World:
                 for agentID in id_list:
                     free_on_agents = np.logical_and(self.state > 0, self.state != agentID)
                     free_spaces_for_previous_goal = np.logical_or(free_on_agents, free_for_all)
-                   # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
                     if distance > 0:
                         previous_x, previous_y = previous_goals[agentID]
                         x_lower_bound = (previous_x - distance) if (previous_x - distance) > 0 else 0
@@ -590,20 +586,8 @@ class World:
                     free_spaces_for_previous_goal = [pos.tolist() for pos in free_spaces_for_previous_goal]
 
                     try:
-                        unique = False 
-                        counter = 0 
-                        while unique == False and counter<500: 
-                            init_idx = np.random.choice(len(free_spaces_for_previous_goal))
-                            init_pos = free_spaces_for_previous_goal[init_idx]
-                            unique= True 
-                            if tuple(init_pos) in next_goal_buffer.values() or tuple(init_pos) in curr_goal_buffer.values() or tuple(init_pos) in new_goals.values()  : 
-                                unique = False 
-                            if previous_goals is not None :
-                                if tuple(init_pos) in previous_goals.values() :
-                                    unique = False 
-                            counter +=1     
-                        if counter >=500 :
-                            print('Hard to find Non Conflicting Goal')    
+                        init_idx = np.random.choice(len(free_spaces_for_previous_goal))
+                        init_pos = free_spaces_for_previous_goal[init_idx]
                         new_goals.update({agentID: tuple(init_pos)})
                     except ValueError:
                         print('wrong goal')
@@ -673,7 +657,8 @@ class World:
         """
         WARNING: ONLY NON-DIAGONAL IS IMPLEMENTED
         return collision status and predicted next positions, do not move agent directly
-        :return:
+        return:
+         2: (only in oneShot mode) action not executed, agents has done its target and has been removed from the env.
          1: action executed, and agents standing on its goal.
          0: action executed
         -1: collision with env (obstacles, out of bound)
@@ -705,7 +690,8 @@ class World:
 
         for agentID in copy.deepcopy(not_checked_list):
             collided_ID = self.state[Assumed_newPos_dict[agentID]]
-            if collided_ID != 0:  # some one is standing on the assumed pos
+            if collided_ID != 0 and Assumed_newPos_dict[agentID] != self.getGoal(
+                    agentID):  # some one is standing on the assumed pos
                 if Assumed_newPos_dict[collided_ID] == self.getPos(agentID):  # he wants to swap
                     if status_dict[agentID] is None:
                         status_dict[agentID] = -2
@@ -722,7 +708,18 @@ class World:
         for agentID in copy.deepcopy(not_checked_list):
             other_agents_dict = copy.deepcopy(Assumed_newPos_dict)
             other_agents_dict.pop(agentID)
-            if Assumed_newPos_dict[agentID] in newPos_dict.values():
+            ignore_goal_agents_dict = copy.deepcopy(newPos_dict)
+            for agent in range(1, self.num_agents + 1):
+                if agent != agentID:
+                    if Assumed_newPos_dict[agent] == self.getGoal(agent):
+                        other_agents_dict.pop(agent)
+                        try:
+                            ignore_goal_agents_dict.pop(agent)
+                        except:
+                            pass
+            if Assumed_newPos_dict[agentID] == self.agents[agentID].goal_pos:
+                continue
+            if Assumed_newPos_dict[agentID] in ignore_goal_agents_dict.values():
                 status_dict[agentID] = -3
                 newPos_dict.update({agentID: self.getPos(agentID)})  # stand still
                 Assumed_newPos_dict[agentID] = self.getPos(agentID)
@@ -752,10 +749,25 @@ class World:
         return status_dict, newPos_dict
 
 
+class TestWorld(World):
+    def __init__(self, map_generator, world_info, isDiagonal=False):
+        super().__init__(map_generator, num_agents=None, isDiagonal=isDiagonal)
+        [self.state, self.goals_map], \
+        self.agents_init_pos, self.corridor_map, self.corridors, self.agents = world_info
+        self.corridor_map, self.corridors = self.corridor_map[()], self.corridors[()]
+        self.num_agents = len(self.agents_init_pos.keys())
+
+    def reset_world(self):
+        pass
+
+    def init_agents_and_goals(self):
+        pass
+
+
 class MAPFEnv(gym.Env):
     metadata = {"render.modes": ["human", "ansi"]}
 
-    def __init__(self, observer, map_generator, num_agents=None,
+    def __init__(self, observer, map_generator, num_agents,
                  IsDiagonal=False, frozen_steps=0, isOneShot=False):
         self.observer = observer
         self.map_generator = map_generator
@@ -770,7 +782,7 @@ class MAPFEnv(gym.Env):
         self.isStandingOnGoal = {i: False for i in range(1, self.num_agents + 1)}
 
         self.individual_rewards = {i: 0 for i in range(1, self.num_agents + 1)}
-        self.mutex = Lock()
+        self.done = False
         self.GIF_frame = []
         if IsDiagonal:
             self.action_space = spaces.Tuple([spaces.Discrete(self.num_agents), spaces.Discrete(9)])
@@ -841,7 +853,8 @@ class MAPFEnv(gym.Env):
         for agentID in range(1, self.num_agents + 1):
             if self.world.agents[agentID].freeze > self.frozen_steps:  # set frozen agents free
                 self.world.agents[agentID].freeze = 0
-
+            if self.world.getDone(agentID) > 0 and self.isOneShot:
+                movement_dict.update({agentID: 0})
             if agentID not in movement_dict.keys() or self.world.agents[agentID].freeze:
                 movement_dict.update({agentID: 0})
             else:
@@ -852,12 +865,20 @@ class MAPFEnv(gym.Env):
         self.world.state[self.world.state > 0] = 0  # remove agents in the map
         put_goal_list = []
         freeze_list = []
+        self.done = True
         for agentID in range(1, self.num_agents + 1):
             if self.isOneShot and self.world.getDone(agentID) > 0:
                 continue
 
+            self.done = False
             newPos = newPos_dict[agentID]
-            self.world.state[newPos] = agentID
+            if self.isOneShot:
+                if status_dict[agentID] not in [1, 2]:
+                    self.world.state[newPos] = agentID
+                # else: don't place agents on state map
+            else:
+                self.world.state[newPos] = agentID
+
             self.world.agents[agentID].move(newPos, status_dict[agentID])
             self.give_moving_reward(agentID)
             if status_dict[agentID] == 1:
@@ -868,16 +889,14 @@ class MAPFEnv(gym.Env):
                         freeze_list.append(agentID)
                     self.world.agents[agentID].freeze += 1
                 else:
-                    self.world.agents[agentID].status = 2
-                    self.world.state[newPos] = 0
+                    if self.world.state[newPos] == 0:
+                        self.world.state[newPos] = 0
+                    self.world.agents[agentID].status = 2  # status=2 means done and removed from the env
                     self.world.goals_map[newPos] = 0
         free_agents = list(range(1, self.num_agents + 1))
 
         if put_goal_list and not self.isOneShot:
             self.world.put_goals(put_goal_list)
-
-            # remove obs for frozen agents:
-
             for frozen_agent in freeze_list:
                 free_agents.remove(frozen_agent)
         return self._observe(free_agents), self.individual_rewards
@@ -888,7 +907,7 @@ class MAPFEnv(gym.Env):
     def listValidActions(self, agent_ID, agent_obs):
         raise NotImplementedError
 
-    def expert_until_first_goal(self, inflation=2.0, time_limit=60.0):
+    def expert_until_first_goal(self, inflation=2.0, time_limit=180.0):
         world = self.getObstacleMap()
         start_positions = []
         goals = []
@@ -898,46 +917,14 @@ class MAPFEnv(gym.Env):
             start_positions.append(start_positions_dir[i])
             goals.append(goals_dir[i])
         mstar_path = None
-        start_time = time.time()
         try:
-            max_time += time_limit
-            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit/5.0)
-
+            mstar_path = od_mstar.find_path(world, start_positions, goals,
+                                            inflation=inflation, time_limit=time_limit)
         except OutOfTimeError:
             # M* timed out
             print("timeout")
-            print('World', world)
-            print('Start Pos', start_positions)
-            print('Goals', goals)
         except NoSolutionError:
             print("nosol????")
-            print('World', world)
-            print('Start Pos', start_positions)
-            print('Goals', goals)
-
-        except:
-            c_time = time.time() - start_time
-            if c_time > time_limit:
-                return mstar_path
-
-            #print("cpp_mstar crash most likely... trying python mstar instead")
-            try:
-                mstar_path = od_mstar.find_path(world, start_positions, goals,
-                                                inflation=inflation, time_limit=time_limit)
-            except OutOfTimeError:
-                # M* timed out
-                print("timeout")
-                print('World', world)
-                print('Start Pos', start_positions)
-                print('Goals', goals)
-            except NoSolutionError:
-                print("nosol????")
-                print('World', world)
-                print('Start Pos', start_positions)
-                print('Goals', goals)
-            except:
-                print("Unknown bug?!")
-
         return mstar_path
 
     def _add_rendering_entry(self, entry, permanent=False):
@@ -1027,7 +1014,10 @@ class MAPFEnv(gym.Env):
                 i, j = agents_dict[agent]
                 x = i * world_size
                 y = j * world_size
-                color = colors[state_map[i, j]]
+                try:
+                    color = colors[agent]
+                except:
+                    continue
                 rect = create_rectangle(x, y, world_size, world_size, color)
                 self._add_rendering_entry(rect)
 
@@ -1063,13 +1053,13 @@ class MAPFEnv(gym.Env):
 if __name__ == "__main__":
     from FlatlandObserver import FlatlandObserver
     from Map_Generator import *
-    from Primal2Env import Primal2Env
+    from FlatlandEnv import FlatlandEnv
     import numpy as np
     from tqdm import tqdm
 
     for _ in tqdm(range(2000)):
         n_agents = np.random.randint(low=25, high=30)
-        env = Primal2Env(num_agents=n_agents,
+        env = FlatlandEnv(num_agents=n_agents,
                           observer=FlatlandObserver(observation_size=3),
                           map_generator=maze_generator(env_size=(10, 30),
                                                        wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
