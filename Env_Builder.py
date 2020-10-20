@@ -2,11 +2,10 @@ import copy
 from operator import sub, add
 import gym
 import numpy as np
-import math, time
+import math
 import warnings
 from od_mstar3.col_set_addition import OutOfTimeError, NoSolutionError
 from od_mstar3 import od_mstar
-from od_mstar3 import cpp_mstar
 from GroupLock import Lock
 from matplotlib.colors import *
 from gym.envs.classic_control import rendering
@@ -61,7 +60,7 @@ def get_key(dict, value):
     return [k for k, v in dict.items() if v == value]
 
 
-def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bool = False):
+def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isCPython=False):
     """
     returns a numpy array of same dims as map with the distance to the goal from each coord
     :param map: a n by m np array, where -1 denotes obstacle
@@ -69,7 +68,6 @@ def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bo
     :param goal: goal_position
     :return: optimal distance map
     """
-
     def lowestF(fScore, openSet):
         # find entry in openSet with lowest fScore
         assert (len(openSet) > 0)
@@ -84,7 +82,7 @@ def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bo
 
     def getNeighbors(node):
         # return set of neighbors to the given node
-        n_moves = 9 if isDiagonal else 5
+        n_moves = 5
         neighbors = set()
         for move in range(1, n_moves):  # we dont want to include 0 or it will include itself
             direction = action2dir(move)
@@ -100,67 +98,71 @@ def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bo
             neighbors.add((ax + dx, ay + dy))
         return neighbors
 
-    # NOTE THAT WE REVERSE THE DIRECTION OF SEARCH SO THAT THE GSCORE WILL BE DISTANCE TO GOAL
-    start, goal = goal, start
-    start, goal = tuple(start), tuple(goal)
-    # The set of nodes already evaluated
-    closedSet = set()
+    if not isCPython:
+        # NOTE THAT WE REVERSE THE DIRECTION OF SEARCH SO THAT THE GSCORE WILL BE DISTANCE TO GOAL
+        start, goal = goal, start
+        start, goal = tuple(start), tuple(goal)
+        # The set of nodes already evaluated
+        closedSet = set()
 
-    # The set of currently discovered nodes that are not evaluated yet.
-    # Initially, only the start node is known.
-    openSet = set()
-    openSet.add(start)
+        # The set of currently discovered nodes that are not evaluated yet.
+        # Initially, only the start node is known.
+        openSet = set()
+        openSet.add(start)
 
-    # For each node, which node it can most efficiently be reached from.
-    # If a node can be reached from many nodes, cameFrom will eventually contain the
-    # most efficient previous step.
-    cameFrom = dict()
+        # For each node, which node it can most efficiently be reached from.
+        # If a node can be reached from many nodes, cameFrom will eventually contain the
+        # most efficient previous step.
+        cameFrom = dict()
 
-    # For each node, the cost of getting from the start node to that node.
-    gScore = dict()  # default value infinity
+        # For each node, the cost of getting from the start node to that node.
+        gScore = dict()  # default value infinity
 
-    # The cost of going from start to start is zero.
-    gScore[start] = 0
+        # The cost of going from start to start is zero.
+        gScore[start] = 0
 
-    # For each node, the total cost of getting from the start node to the goal
-    # by passing by that node. That value is partly known, partly heuristic.
-    fScore = dict()  # default infinity
+        # For each node, the total cost of getting from the start node to the goal
+        # by passing by that node. That value is partly known, partly heuristic.
+        fScore = dict()  # default infinity
 
-    # our heuristic is euclidean distance to goal
-    heuristic_cost_estimate = lambda x, y: math.hypot(x[0] - y[0], x[1] - y[1])
+        # our heuristic is euclidean distance to goal
+        heuristic_cost_estimate = lambda x, y: math.hypot(x[0] - y[0], x[1] - y[1])
 
-    # For the first node, that value is completely heuristic.
-    fScore[start] = heuristic_cost_estimate(start, goal)
+        # For the first node, that value is completely heuristic.
+        fScore[start] = heuristic_cost_estimate(start, goal)
 
-    while len(openSet) != 0:
-        # current = the node in openSet having the lowest fScore value
-        current = lowestF(fScore, openSet)
+        while len(openSet) != 0:
+            # current = the node in openSet having the lowest fScore value
+            current = lowestF(fScore, openSet)
 
-        openSet.remove(current)
-        closedSet.add(current)
-        for neighbor in getNeighbors(current):
-            if neighbor in closedSet:
-                continue  # Ignore the neighbor which is already evaluated.
+            openSet.remove(current)
+            closedSet.add(current)
+            for neighbor in getNeighbors(current):
+                if neighbor in closedSet:
+                    continue  # Ignore the neighbor which is already evaluated.
 
-            if neighbor not in openSet:  # Discover a new node
-                openSet.add(neighbor)
+                if neighbor not in openSet:  # Discover a new node
+                    openSet.add(neighbor)
 
-            # The distance from start to a neighbor
-            # in our case the distance between is always 1
-            tentative_gScore = gScore[current] + 1
-            if tentative_gScore >= gScore.get(neighbor, 2 ** 31 - 1):
-                continue  # This is not a better path.
+                # The distance from start to a neighbor
+                # in our case the distance between is always 1
+                tentative_gScore = gScore[current] + 1
+                if tentative_gScore >= gScore.get(neighbor, 2 ** 31 - 1):
+                    continue  # This is not a better path.
 
-            # This path is the best until now. Record it!
-            cameFrom[neighbor] = current
-            gScore[neighbor] = tentative_gScore
-            fScore[neighbor] = gScore[neighbor] + heuristic_cost_estimate(neighbor, goal)
+                # This path is the best until now. Record it!
+                cameFrom[neighbor] = current
+                gScore[neighbor] = tentative_gScore
+                fScore[neighbor] = gScore[neighbor] + heuristic_cost_estimate(neighbor, goal)
 
-            # parse through the gScores
-    Astar_map = map.copy()
-    for (i, j) in gScore:
-        Astar_map[i, j] = gScore[i, j]
-    return Astar_map
+                # parse through the gScores
+        Astar_map = map.copy()
+        for (i, j) in gScore:
+            Astar_map[i, j] = gScore[i, j]
+        return Astar_map
+    else:
+        planner = aStar(array=map)  # where 0 is free space, -1 is obstacle
+        return planner.getAstarDistanceMap(goal)  # should give you the distance map for a given goal
 
 
 class Agent:
@@ -536,9 +538,9 @@ class World:
             assert len(manual_pos.keys()) == len(id_list)
             init_poss = [manual_pos[agentID] for agentID in id_list]
         assert len(init_poss) == len(id_list)
+        self.agents_init_pos = {}
         for idx, agentID in enumerate(id_list):
             self.agents[agentID].ID = agentID
-            self.agents_init_pos = {}
             if self.state[init_poss[idx][0], init_poss[idx][1]] in [0, agentID] \
                     and self.goals_map[init_poss[idx][0], init_poss[idx][1]] != agentID:
                 self.state[init_poss[idx][0], init_poss[idx][1]] = agentID
@@ -560,8 +562,6 @@ class World:
         """
 
         def random_goal_pos(previous_goals=None, distance=None):
-            next_goal_buffer = {agentID: self.agents[agentID].next_goal for agentID in range(1,self.num_agents+1)}
-            curr_goal_buffer = {agentID: self.agents[agentID].goal_pos for agentID in range(1,self.num_agents+1)}
             if previous_goals is None:
                 previous_goals = {agentID: None for agentID in id_list}
             if distance is None:
@@ -578,7 +578,6 @@ class World:
                 for agentID in id_list:
                     free_on_agents = np.logical_and(self.state > 0, self.state != agentID)
                     free_spaces_for_previous_goal = np.logical_or(free_on_agents, free_for_all)
-                   # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
                     if distance > 0:
                         previous_x, previous_y = previous_goals[agentID]
                         x_lower_bound = (previous_x - distance) if (previous_x - distance) > 0 else 0
@@ -590,20 +589,8 @@ class World:
                     free_spaces_for_previous_goal = [pos.tolist() for pos in free_spaces_for_previous_goal]
 
                     try:
-                        unique = False 
-                        counter = 0 
-                        while unique == False and counter<500: 
-                            init_idx = np.random.choice(len(free_spaces_for_previous_goal))
-                            init_pos = free_spaces_for_previous_goal[init_idx]
-                            unique= True 
-                            if tuple(init_pos) in next_goal_buffer.values() or tuple(init_pos) in curr_goal_buffer.values() or tuple(init_pos) in new_goals.values()  : 
-                                unique = False 
-                            if previous_goals is not None :
-                                if tuple(init_pos) in previous_goals.values() :
-                                    unique = False 
-                            counter +=1     
-                        if counter >=500 :
-                            print('Hard to find Non Conflicting Goal')    
+                        init_idx = np.random.choice(len(free_spaces_for_previous_goal))
+                        init_pos = free_spaces_for_previous_goal[init_idx]
                         new_goals.update({agentID: tuple(init_pos)})
                     except ValueError:
                         print('wrong goal')
@@ -673,7 +660,8 @@ class World:
         """
         WARNING: ONLY NON-DIAGONAL IS IMPLEMENTED
         return collision status and predicted next positions, do not move agent directly
-        :return:
+        return:
+         2: (only in oneShot mode) action not executed, agents has done its target and has been removed from the env.
          1: action executed, and agents standing on its goal.
          0: action executed
         -1: collision with env (obstacles, out of bound)
@@ -705,7 +693,8 @@ class World:
 
         for agentID in copy.deepcopy(not_checked_list):
             collided_ID = self.state[Assumed_newPos_dict[agentID]]
-            if collided_ID != 0:  # some one is standing on the assumed pos
+            if collided_ID != 0 and Assumed_newPos_dict[agentID] != self.getGoal(
+                    agentID):  # some one is standing on the assumed pos
                 if Assumed_newPos_dict[collided_ID] == self.getPos(agentID):  # he wants to swap
                     if status_dict[agentID] is None:
                         status_dict[agentID] = -2
@@ -722,7 +711,18 @@ class World:
         for agentID in copy.deepcopy(not_checked_list):
             other_agents_dict = copy.deepcopy(Assumed_newPos_dict)
             other_agents_dict.pop(agentID)
-            if Assumed_newPos_dict[agentID] in newPos_dict.values():
+            ignore_goal_agents_dict = copy.deepcopy(newPos_dict)
+            for agent in range(1, self.num_agents + 1):
+                if agent != agentID:
+                    if Assumed_newPos_dict[agent] == self.getGoal(agent):
+                        other_agents_dict.pop(agent)
+                        try:
+                            ignore_goal_agents_dict.pop(agent)
+                        except:
+                            pass
+            if Assumed_newPos_dict[agentID] == self.agents[agentID].goal_pos:
+                continue
+            if Assumed_newPos_dict[agentID] in ignore_goal_agents_dict.values():
                 status_dict[agentID] = -3
                 newPos_dict.update({agentID: self.getPos(agentID)})  # stand still
                 Assumed_newPos_dict[agentID] = self.getPos(agentID)
@@ -752,10 +752,25 @@ class World:
         return status_dict, newPos_dict
 
 
+class TestWorld(World):
+    def __init__(self, map_generator, world_info, isDiagonal=False):
+        super().__init__(map_generator, num_agents=None, isDiagonal=isDiagonal)
+        [self.state, self.goals_map], \
+        self.agents_init_pos, self.corridor_map, self.corridors, self.agents = world_info
+        self.corridor_map, self.corridors = self.corridor_map[()], self.corridors[()]
+        self.num_agents = len(self.agents_init_pos.keys())
+
+    def reset_world(self):
+        pass
+
+    def init_agents_and_goals(self):
+        pass
+
+
 class MAPFEnv(gym.Env):
     metadata = {"render.modes": ["human", "ansi"]}
 
-    def __init__(self, observer, map_generator, num_agents=None,
+    def __init__(self, observer, map_generator, num_agents,
                  IsDiagonal=False, frozen_steps=0, isOneShot=False):
         self.observer = observer
         self.map_generator = map_generator
@@ -770,7 +785,7 @@ class MAPFEnv(gym.Env):
         self.isStandingOnGoal = {i: False for i in range(1, self.num_agents + 1)}
 
         self.individual_rewards = {i: 0 for i in range(1, self.num_agents + 1)}
-        self.mutex = Lock()
+        self.done = False
         self.GIF_frame = []
         if IsDiagonal:
             self.action_space = spaces.Tuple([spaces.Discrete(self.num_agents), spaces.Discrete(9)])
@@ -828,7 +843,7 @@ class MAPFEnv(gym.Env):
             raise ValueError("Invalid agent_id given")
         return self.obs_dict
 
-    def step_all(self, movement_dict):
+    def step_all(self, movement_dict, observe=True):
         """
         Agents are forced to freeze self.frozen_steps steps if they are standing on their goals.
         The new goal will be generated at the FIRST step it remains on its goal.
@@ -841,7 +856,8 @@ class MAPFEnv(gym.Env):
         for agentID in range(1, self.num_agents + 1):
             if self.world.agents[agentID].freeze > self.frozen_steps:  # set frozen agents free
                 self.world.agents[agentID].freeze = 0
-
+            if self.world.getDone(agentID) > 0 and self.isOneShot:
+                movement_dict.update({agentID: 0})
             if agentID not in movement_dict.keys() or self.world.agents[agentID].freeze:
                 movement_dict.update({agentID: 0})
             else:
@@ -852,12 +868,20 @@ class MAPFEnv(gym.Env):
         self.world.state[self.world.state > 0] = 0  # remove agents in the map
         put_goal_list = []
         freeze_list = []
+        self.done = True
         for agentID in range(1, self.num_agents + 1):
             if self.isOneShot and self.world.getDone(agentID) > 0:
                 continue
 
+            self.done = False
             newPos = newPos_dict[agentID]
-            self.world.state[newPos] = agentID
+            if self.isOneShot:
+                if status_dict[agentID] not in [1, 2]:
+                    self.world.state[newPos] = agentID
+                # else: don't place agents on state map
+            else:
+                self.world.state[newPos] = agentID
+
             self.world.agents[agentID].move(newPos, status_dict[agentID])
             self.give_moving_reward(agentID)
             if status_dict[agentID] == 1:
@@ -868,19 +892,20 @@ class MAPFEnv(gym.Env):
                         freeze_list.append(agentID)
                     self.world.agents[agentID].freeze += 1
                 else:
-                    self.world.agents[agentID].status = 2
-                    self.world.state[newPos] = 0
+                    if self.world.state[newPos] == 0:
+                        self.world.state[newPos] = 0
+                    self.world.agents[agentID].status = 2  # status=2 means done and removed from the env
                     self.world.goals_map[newPos] = 0
         free_agents = list(range(1, self.num_agents + 1))
 
         if put_goal_list and not self.isOneShot:
             self.world.put_goals(put_goal_list)
-
-            # remove obs for frozen agents:
-
             for frozen_agent in freeze_list:
                 free_agents.remove(frozen_agent)
-        return self._observe(free_agents), self.individual_rewards
+        if observe:
+            return self._observe(free_agents), self.individual_rewards
+        else:
+            return None, self.individual_rewards
 
     def give_moving_reward(self, agentID):
         raise NotImplementedError
@@ -888,7 +913,7 @@ class MAPFEnv(gym.Env):
     def listValidActions(self, agent_ID, agent_obs):
         raise NotImplementedError
 
-    def expert_until_first_goal(self, inflation=2.0, time_limit=60.0):
+    def expert_until_first_goal(self, inflation=2.0, time_limit=180.0):
         world = self.getObstacleMap()
         start_positions = []
         goals = []
@@ -898,46 +923,14 @@ class MAPFEnv(gym.Env):
             start_positions.append(start_positions_dir[i])
             goals.append(goals_dir[i])
         mstar_path = None
-        start_time = time.time()
         try:
-            max_time += time_limit
-            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit/5.0)
-
+            mstar_path = od_mstar.find_path(world, start_positions, goals,
+                                            inflation=inflation, time_limit=time_limit)
         except OutOfTimeError:
             # M* timed out
             print("timeout")
-            print('World', world)
-            print('Start Pos', start_positions)
-            print('Goals', goals)
         except NoSolutionError:
             print("nosol????")
-            print('World', world)
-            print('Start Pos', start_positions)
-            print('Goals', goals)
-
-        except:
-            c_time = time.time() - start_time
-            if c_time > time_limit:
-                return mstar_path
-
-            #print("cpp_mstar crash most likely... trying python mstar instead")
-            try:
-                mstar_path = od_mstar.find_path(world, start_positions, goals,
-                                                inflation=inflation, time_limit=time_limit)
-            except OutOfTimeError:
-                # M* timed out
-                print("timeout")
-                print('World', world)
-                print('Start Pos', start_positions)
-                print('Goals', goals)
-            except NoSolutionError:
-                print("nosol????")
-                print('World', world)
-                print('Start Pos', start_positions)
-                print('Goals', goals)
-            except:
-                print("Unknown bug?!")
-
         return mstar_path
 
     def _add_rendering_entry(self, entry, permanent=False):
@@ -1027,7 +1020,10 @@ class MAPFEnv(gym.Env):
                 i, j = agents_dict[agent]
                 x = i * world_size
                 y = j * world_size
-                color = colors[state_map[i, j]]
+                try:
+                    color = colors[agent]
+                except:
+                    continue
                 rect = create_rectangle(x, y, world_size, world_size, color)
                 self._add_rendering_entry(rect)
 
@@ -1041,43 +1037,9 @@ class MAPFEnv(gym.Env):
                     color = (0, 0, 0)
                     circ = create_circle(x, y, world_size, world_size, color)
                     self._add_rendering_entry(circ)
-            # if self.action_probs is not None:
-            #     n_moves = 9 if self.IsDiagonal else 5
-            #     for agent in range(1, num_agents + 1):
-            #         # take the a_dist from the given data and draw it on the frame
-            #         a_dist = self.action_probs[agent - 1]
-            #         if a_dist is not None:
-            #             for m in range(n_moves):
-            #                 dx, dy = action2dir(m)
-            #                 x = (agents_dict(agent)[0] + dx) * world_size
-            #                 y = (agents_dict(agent)[1] + dy) * world_size
-            #                 circ = create_circle(x, y, world_size, world_size, (0, 0, 0))
-            #                 self._add_rendering_entry(circ)
             result = self.viewer.render(return_rgb_array=1)
             return result
 
         frame = painter(self.world.state, self.getPositions(), self.getGoals())
         return frame
 
-
-if __name__ == "__main__":
-    from FlatlandObserver import FlatlandObserver
-    from Map_Generator import *
-    from Primal2Env import Primal2Env
-    import numpy as np
-    from tqdm import tqdm
-
-    for _ in tqdm(range(2000)):
-        n_agents = np.random.randint(low=25, high=30)
-        env = Primal2Env(num_agents=n_agents,
-                          observer=FlatlandObserver(observation_size=3),
-                          map_generator=maze_generator(env_size=(10, 30),
-                                                       wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
-                          IsDiagonal=False)
-        for agentID in range(1, n_agents + 1):
-            pos = env.world.agents[agentID].position
-            goal = env.world.agents[agentID].goal_pos
-            assert agentID == env.world.state[pos]
-            assert agentID == env.world.goals_map[goal]
-        assert len(np.argwhere(env.world.state > 0)) == n_agents
-        assert len(np.argwhere(env.world.goals_map > 0)) == n_agents
