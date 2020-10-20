@@ -197,8 +197,10 @@ class Worker():
 
                     # start RL
                     self.env.finished = False
+                    agent_done = False
                     while not self.env.finished:
-                        a_dist, v, rnn_state = self.sess.run([self.local_AC.policy,
+                        if not agent_done:
+                            a_dist, v, rnn_state = self.sess.run([self.local_AC.policy,
                                                          self.local_AC.value,
                                                          self.local_AC.state_out],
                                                         feed_dict={self.local_AC.inputs     : [s[0]],  # state
@@ -206,10 +208,10 @@ class Worker():
                                                                    self.local_AC.state_in[0]: rnn_state[0],
                                                                    self.local_AC.state_in[1]: rnn_state[1]})
 
-                        skipping_state = False 
-                        train_policy = train_val = 1 
+                            skipping_state = False 
+                            train_policy = train_val = 1 
                        
-                        if not skipping_state :
+                        if not skipping_state and not agent_done:
                             if not (np.argmax(a_dist.flatten()) in validActions):
                                 episode_inv_count += 1
                                 train_val = 0 
@@ -233,7 +235,7 @@ class Worker():
                             for i in range(1, self.num_workers+1):
                                 joint_observations[self.metaAgentID][i] = all_obs[i]
                                 joint_rewards[self.metaAgentID][i]      = all_rewards[i]
-                                joint_done[self.metaAgentID][i]         = (self.env.world.agents[i].status ==1)
+                                joint_done[self.metaAgentID][i]         = (self.env.world.agents[i].status >=1)
                             if saveGIF and self.agentID == 1:
                                 GIF_frames.append(self.env._render())
 
@@ -241,13 +243,15 @@ class Worker():
 
                         # Get observation,reward, valid actions for each agent 
                         s1           = joint_observations[self.metaAgentID][self.agentID]
-                        r            = copy.deepcopy(joint_rewards[self.metaAgentID][self.agentID]) 
-                        validActions = self.env.listValidActions(self.agentID, s1)
+                        r            = copy.deepcopy(joint_rewards[self.metaAgentID][self.agentID])
+
+                        if not agent_done:
+                            validActions = self.env.listValidActions(self.agentID, s1)
 
                         
                         self.synchronize() 
                         # Append to Appropriate buffers 
-                        if not skipping_state :
+                        if not skipping_state and not agent_done:
                             episode_buffer.append([s[0], a, joint_rewards[self.metaAgentID][self.agentID] , s1, v[0, 0], train_valid, s[1], train_val,train_policy])
                             episode_values.append(v[0, 0])
                         episode_reward += r
@@ -258,7 +262,7 @@ class Worker():
 
                         # If the episode hasn't ended, but the experience buffer is full, then we
                         # make an update step using that experience rollout.
-                        if (len(episode_buffer)>1) and ((len(episode_buffer) % EXPERIENCE_BUFFER_SIZE == 0) or joint_done[self.metaAgentID][self.agentID] or episode_step_count==max_episode_length):
+                        if (not agent_done) and (len(episode_buffer)>1) and ((len(episode_buffer) % EXPERIENCE_BUFFER_SIZE == 0) or joint_done[self.metaAgentID][self.agentID] or episode_step_count==max_episode_length):
                             # Since we don't know what the true final return is,
                             # we "bootstrap" from our current value estimation.
                             if len(episode_buffer) >= EXPERIENCE_BUFFER_SIZE:
@@ -269,7 +273,6 @@ class Worker():
                             if joint_done[self.metaAgentID][self.agentID]:
                                 s1Value        = 0       # Terminal state
                                 episode_buffer = []
-                                joint_done[self.metaAgentID][self.agentID] = False
                                 targets_done   += 1
 
                             else:
@@ -356,108 +359,82 @@ class Worker():
         return
 
 
-
-    # Used for imitation learning
     def parse_path(self,episode_count):
         """needed function to take the path generated from M* and create the
         observations and actions for the agent
         path: the exact path ouput by M*, assuming the correct number of agents
         returns: the list of rollouts for the "episode":
                 list of length num_agents with each sublist a list of tuples
-                (observation[0],observation[1],optimal_action,reward)"""
-        
-        result           =[[] for i in range(self.num_workers)]
-        actions          ={} 
-        o                ={}
-        train_imitation  ={} 
-        targets_done     = 0 
-        saveGIF          = False 
+                (observation[0],observation[1],optimal_action,reward)"""   
 
-        if np.random.rand() < IL_GIF_PROB : 
-            saveGIF    =True     
-        if saveGIF and OUTPUT_IL_GIFS:
-            GIF_frames = [self.env._render()] 
-
-        single_done    = False 
-        new_call       = False 
-        new_MSTAR_call = False 
-
+        global ACTION_SKIPPING, GIF_frames, SAVE_IL_GIF , IL_GIF_PROB 
+        saveGIF= False  
+        if np.random.rand() < IL_GIF_PROB  : 
+            saveGIF= True     
+        if saveGIF and SAVE_IL_GIF:    
+          GIF_frames = [self.env._render()]       
+        result  = [[] for i in range(self.num_workers)]
+        actions = {} 
+        o       = {}
+        finished = {}
+        train_imitation = {} 
+        count_finished  = 0 
+        pos_buffer = [] 
+        goal_buffer  = [] 
         all_obs = self.env._observe()
         for agentID in range(1, self.num_workers + 1):
             o[agentID] = all_obs[agentID]
             train_imitation[agentID] = 1 
+            finished[agentID] = 0 
         step_count = 0 
-        while step_count <= IL_MAX_EP_LENGTH :
+        while step_count <= max_episode_length and count_finished<self.num_workers :
             path = self.env.expert_until_first_goal()
             if path is None:  # solution not exists
                 if step_count !=0 :
-                    return result,targets_done
-                #print('Failed intially')     
-                return None,0 
+                    return result, 0 
+                print('Failed intially')     
+                return None, 0      
             none_on_goal = True
-            path_step = 1
-            while none_on_goal and step_count <= IL_MAX_EP_LENGTH:
-                completed_agents =[] 
-                start_positions =[] 
-                goals =[] 
+            path_step = 1  
+            while none_on_goal and step_count <= max_episode_length and count_finished<self.num_workers :
+                positions= []
+                goals=[]  
                 for i in range(self.num_workers):
                     agent_id = i+1
-                    next_pos = path[path_step][i]
-                    diff = tuple_minus(next_pos, self.env.world.getPos(agent_id))
-                    actions[agent_id] = dir2action(diff)
-
+                    if finished[agent_id] :
+                        actions[agent_id] = 0
+                    else :     
+                        next_pos = path[path_step][i]
+                        diff = tuple_minus(next_pos, self.env.world.getPos(agent_id))  
+                        try :
+                            actions[agent_id] = dir2action(diff)
+                        except :
+                            print(pos_buffer) 
+                            print(goal_buffer) 
+                            actions[agent_id] = dir2action(diff)                                
+                    if ACTION_SKIPPING :
+                        train_imitation[agent_id] = (0==self.action_skipping_state(agent_id) ) 
                 all_obs, _ = self.env.step_all(actions)
                 for i in range(self.num_workers) :
                     agent_id = i+1
+                    positions.append(self.env.world.getPos(agent_id)) 
+                    goals.append(self.env.world.getGoal(agent_id))                    
                     result[i].append([o[agent_id][0], o[agent_id][1], actions[agent_id],train_imitation[agent_id]])
-                    if self.env.world.agents[agent_id].status == 1:
-                        completed_agents.append(i) 
-                        targets_done +=1 
-                        single_done = True 
-                        if targets_done% MSTAR_CALL_FREQUENCY ==0 :
-                            new_MSTAR_call = True 
-                        else :     
-                            new_call = True 
-                if saveGIF and OUTPUT_IL_GIFS:   
-                    GIF_frames.append(self.env._render())     
-                if single_done and new_MSTAR_call :
-                    path = self.env.expert_until_first_goal()   
-                    if path is None :
-                        return result, targets_done
-                    path_step = 0 
-                elif single_done and new_call : 
-                    path = path[path_step:] 
-                    path = [ list(state) for state in path ]     
-                    for finished_agent in completed_agents :
-                        path = merge_plans(path, [None] * len(path), finished_agent) 
-                    try :
-                        while path[-1]==path[-2] :
-                           path = path[:-1]  
-                    except :
-                        assert(len(path)<=2)        
-                    start_positions_dir = self.env.getPositions()
-                    goals_dir = self.env.getGoals()
-                    for i in range(1, self.env.world.num_agents + 1):
-                        start_positions.append(start_positions_dir[i])
-                        goals.append(goals_dir[i])
-                    world =self.env.getObstacleMap()         
-                   # print('OLD PATH', path) # print('CURRENT POSITIONS', start_positions) # print('CURRENT GOALS',goals) # print('WORLD',world)
-                    try :
-                        path = priority_planner(world,tuple(start_positions),tuple(goals),path )
-                    except :
-                        path = self.env.expert_until_first_goal()  
-                        if path == None :
-                                return result,targets_done  
-                    path_step = 0
+                    if self.env.world.agents[agent_id].status >= 1 and finished[agent_id]!=1:
+                        # none_on_goal = False
+                        finished[agent_id] = 1 
+                        count_finished +=1 
+                pos_buffer.append(positions)   
+                goal_buffer.append(goals)   
+                if saveGIF and SAVE_IL_GIF:   
+                    GIF_frames.append(self.env._render())         
                 o = all_obs
                 step_count += 1
-                path_step += 1
-                new_call = False
-                new_MSTAR_call= False  
-        if saveGIF and OUTPUT_IL_GIFS:          
+                path_step += 1  
+        if saveGIF and SAVE_IL_GIF :
             make_gif(np.array(GIF_frames),
-                                     '{}/episodeIL_{}.gif'.format(gifs_path,episode_count))                                                                  
-        return result, targets_done
+                                     '{}/episodeIL_{}.gif'.format(gifs_path,episode_count))       
+        return result,count_finished
 
     
     def shouldRun(self, coord, episode_count=None):
