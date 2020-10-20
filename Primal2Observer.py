@@ -6,14 +6,14 @@ from Env_Builder import *
 import time
 
 
-class Primal2Observer(ObservationBuilder):
+class PRIMAL2Observer(ObservationBuilder):
     """
     obs shape: (8 + num_future_steps * obs_size * obs_size )
     map order: poss_map, goal_map, goals_map, obs_map, pathlength_map, blocking_map, deltax_map, deltay_map, astar maps
     """
 
     def __init__(self, observation_size=11, num_future_steps=3, printTime=False):
-        super(Primal2Observer, self).__init__()
+        super(PRIMAL2Observer, self).__init__()
         self.observation_size = observation_size
         self.num_future_steps = num_future_steps
         self.NUM_CHANNELS = 8 + self.num_future_steps
@@ -94,7 +94,6 @@ class Primal2Observer(ObservationBuilder):
                 if self.world.state[i, j] == agent_id:
                     # agent's position
                     poss_map[i - top_left[0], j - top_left[1]] = 1
-                    # updated_poss_map[i - top_left[0], j - top_left[1]] = 0
                 if self.world.goals_map[i, j] == agent_id:
                     # agent's goal
                     goal_map[i - top_left[0], j - top_left[1]] = 1
@@ -102,8 +101,7 @@ class Primal2Observer(ObservationBuilder):
                     # other agents' positions
                     visible_agents.append(self.world.state[i, j])
                     poss_map[i - top_left[0], j - top_left[1]] = 1
-                    # updated_poss_map[i - top_left[0], j - top_left[1]] = self.world.state[i, j]
-
+                
                 # we can keep this map even if on goal,
                 # since observation is computed after the refresh of new distance map
                 pathlength_map[i - top_left[0], j - top_left[1]] = self.world.agents[agent_id].distanceMap[i, j]
@@ -189,7 +187,7 @@ class Primal2Observer(ObservationBuilder):
                     pathlength_map[i, j] = (index + 1) * step_size
 
         state = np.array([poss_map, goal_map, goals_map, obs_map, pathlength_map, blocking_map, deltax_map,
-                          deltay_map])
+                          deltay_map]) 
         state = np.concatenate((state, astar_map), axis=0)
 
         time6 = time.time() - start_time
@@ -255,7 +253,6 @@ class Primal2Observer(ObservationBuilder):
                 next_step_cells = list(set(next_step_cells))  # remove repeated positions
                 astar_list.append(next_step_cells)
                 path_counter += 1
-
             astar_list.pop(0)
             return astar_list
 
@@ -265,9 +262,7 @@ class Primal2Observer(ObservationBuilder):
                 {agentID: np.zeros([self.num_future_steps, self.world.state.shape[0], self.world.state.shape[1]])})
 
             distance_map0, start_pos0 = self.world.agents[agentID].distanceMap, self.world.agents[agentID].position
-
             astar_path = get_single_astar_path(distance_map0, start_pos0, self.num_future_steps)
-
 
             if not len(astar_path) == self.num_future_steps:  # this agent reaches its goal during future steps
                 distance_map1, start_pos1 = self.world.agents[agentID].next_distanceMap, \

@@ -21,9 +21,8 @@ def normalized_columns_initializer(std=1.0):
 
 
 class ACNet:
-    def __init__(self, scope, a_size, trainer, TRAINING, NUM_CHANNEL, OBS_SIZE, GLOBAL_NET_SCOPE, GLOBAL_NETWORK=False):
+    def __init__(self, scope, a_size, trainer, TRAINING, NUM_CHANNEL, OBS_SIZE, GLOBAL_NET_SCOPE):
         with tf.variable_scope(str(scope) + '/qvalues'):
-            self.trainer = trainer
             # The input size may require more work to fit the interface.
             self.inputs = tf.placeholder(shape=[None, NUM_CHANNEL, OBS_SIZE, OBS_SIZE], dtype=tf.float32)
             self.goal_pos = tf.placeholder(shape=[None, 3], dtype=tf.float32)
@@ -39,75 +38,44 @@ class ACNet:
 
             self.responsible_outputs = tf.reduce_sum(self.policy * self.actions_onehot, [1])
             self.train_value = tf.placeholder(tf.float32, [None])
-            
             self.train_policy = tf.placeholder(tf.float32, [None])
-            
-            self.train_imitation = tf.placeholder(tf.float32, [None]) # NEED THIS
-
-            self.optimal_actions = tf.placeholder(tf.int32, [None]) # NEED THIS
-
-            self.optimal_actions_onehot = tf.one_hot(self.optimal_actions, a_size, dtype=tf.float32) # NEED THIS
-            
+            self.train_imitation = tf.placeholder(tf.float32, [None])
+            self.optimal_actions = tf.placeholder(tf.int32, [None])
+            self.optimal_actions_onehot = tf.one_hot(self.optimal_actions, a_size, dtype=tf.float32)
             self.train_valids= tf.placeholder(tf.float32, [None,1])
 
             # Loss Functions
             self.value_loss  = 0.1 * tf.reduce_mean(
                 self.train_value * tf.square(self.target_v - tf.reshape(self.value, shape=[-1])))
-            
             self.entropy     = - tf.reduce_mean(self.policy * tf.log(tf.clip_by_value(self.policy, 1e-10, 1.0)))
-            
             self.policy_loss = - 0.5 * tf.reduce_mean(self.train_policy*
                 tf.log(tf.clip_by_value(self.responsible_outputs, 1e-15, 1.0)) * self.advantages)
-
-            
             self.valid_loss  = - 16 * tf.reduce_mean(self.train_valids * tf.log(tf.clip_by_value(self.valids, 1e-10, 1.0)) * \
                                                     self.train_valid + tf.log(
                                  tf.clip_by_value(1 - self.valids, 1e-10, 1.0)) * (1 - self.train_valid))
-            
 
             self.loss = self.value_loss + self.policy_loss + self.valid_loss - self.entropy * 0.01
+            self.imitation_loss =  tf.reduce_mean(self.train_imitation*
+                tf.contrib.keras.backend.categorical_crossentropy(self.optimal_actions_onehot, self.policy))
 
-
-            # IMPORTANT: 0 * self.value_loss is important so we can
-            #            fetch the gradients properly
-            self.imitation_loss =  0 * self.value_loss + tf.reduce_mean(self.train_imitation*
-               tf.keras.backend.categorical_crossentropy(self.optimal_actions_onehot, self.policy))
-            
-            
             # Get gradients from local network using local losses and
             # normalize the gradients using clipping
-            
             local_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope + '/qvalues')
             self.gradients = tf.gradients(self.loss, local_vars)
             self.var_norms = tf.global_norm(local_vars)
-            self.grads, self.grad_norms = tf.clip_by_global_norm(self.gradients, GRAD_CLIP)
+            grads, self.grad_norms = tf.clip_by_global_norm(self.gradients, GRAD_CLIP)
 
             # Apply local gradients to global network
             global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, GLOBAL_NET_SCOPE + '/qvalues')
-            if self.trainer:
-                self.apply_grads = self.trainer.apply_gradients(zip(self.grads, global_vars))
+            self.apply_grads = trainer.apply_gradients(zip(grads, global_vars))
 
-
-            self.local_vars = local_vars
-            
             # now the gradients for imitation loss
             self.i_gradients = tf.gradients(self.imitation_loss, local_vars)
             self.i_var_norms = tf.global_norm(local_vars)
-            self.i_grads, self.i_grad_norms = tf.clip_by_global_norm(self.i_gradients, GRAD_CLIP)
+            i_grads, self.i_grad_norms = tf.clip_by_global_norm(self.i_gradients, GRAD_CLIP)
 
             # Apply local gradients to global network
-            if self.trainer:
-                self.apply_imitation_grads = self.trainer.apply_gradients(zip(self.i_grads, global_vars))
-
-            
-        if GLOBAL_NETWORK:
-            print("\n\n\n\n is a global network\n\n\n\n")
-            weightVars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-            self.tempGradients = [tf.placeholder(shape=w.get_shape(), dtype=tf.float32) for w in weightVars]
-            self.apply_grads = self.trainer.apply_gradients(zip(self.tempGradients, weightVars))
-            #self.clippedGrads, norms = tf.clip_by_global_norm(self.tempGradients, GRAD_CLIP)
-            #self.apply_grads = self.trainer.apply_gradients(zip(self.clippedGrads, weightVars))
-            
+            self.apply_imitation_grads = trainer.apply_gradients(zip(i_grads, global_vars))
         print("Hello World... From  " + str(scope))  # :)
 
     def _build_net(self, inputs, goal_pos, RNN_SIZE, TRAINING, a_size):

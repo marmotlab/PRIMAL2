@@ -314,11 +314,11 @@ class Od_Mstar(object):
             return t_node
         # Need to instantiate the node
         if standard_node:
-            col = self.col_checker.col_check(coord, self.recursive)
+            col = self.col_checker.col_check(coord, self.recursive, self.goals)
         else:
             # Only check for collisions between robots whose move has
             # been determined
-            col = self.col_checker.col_check(coord[MOVE_TUPLE], self.recursive)
+            col = self.col_checker.col_check(coord[MOVE_TUPLE], self.recursive, self.goals)
         free = (len(col) == 0)
         t_node = mstar_node(coord, free, self.recursive, standard_node)
         # Cache the resultant col_set
@@ -611,7 +611,7 @@ class Od_Mstar(object):
             pass_col = self.pass_through(coord, new_coord)
             if pass_col:
                 return [], pass_col
-            col = self.col_checker.col_check(new_coord, self.recursive)
+            col = self.col_checker.col_check(new_coord, self.recursive, self.goals)
             if col:
                 return [], col
             return [new_coord], []
@@ -652,7 +652,7 @@ class Od_Mstar(object):
                     for old in gen_list:
                         new_coord = old + (n, )
                         # Perform collision checking
-                        tcol = self.incremental_col_check(coord, new_coord)
+                        tcol = self.incremental_col_check(coord, new_coord, self.goals)
                         if tcol:
                             col_set = adder(col_set, tcol)
                             continue
