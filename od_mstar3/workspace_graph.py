@@ -1259,7 +1259,7 @@ class Edge_Checker(interface.Planner_Edge_Checker):
         # No collision
         return False
 
-    def col_check(self, c1, recursive):
+    def col_check(self, c1, recursive, goals):
         """Checks for collisions at a single point.  Returns either a M*
         or rM* collision set in the form of sets, depending on the
         setting of recursive.
@@ -1272,7 +1272,7 @@ class Edge_Checker(interface.Planner_Edge_Checker):
             adder = add_col_set_recursive
         for i in range(len(c1) - 1):
             for j in range(i + 1, len(c1)):
-                if c1[i] == c1[j]:
+                if c1[i] == c1[j] and not c1[i] == goals[i]:
                     col_set = adder([frozenset([i, j])], col_set)
         return col_set
 
