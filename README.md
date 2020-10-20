@@ -24,9 +24,9 @@ set up testing for your own planner.
         Check by going back to the root of the git folder, running "from astarlib3.astarlib import aStar"
 
 ## Running Code
-- call 'python TestingEnv.py' to run the testing of a single map
-- call 'python TestGenerator.py' to run testing map generation
-- call 'python MultiProcessingTestDriver.py' to run a series of testing maps by mp
+- call `python TestingEnv.py` to run the testing of a single map
+- call `python TestGenerator.py` to run testing map generation
+- call `python MultiProcessingTestDriver.py` to run a series of testing maps by mp
 
 
 ## Other Links
