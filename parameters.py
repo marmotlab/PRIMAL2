@@ -12,12 +12,12 @@ episode_count           = 0
 
 # observer parameters
 OBS_SIZE                = 11   # the size of the FOV grid to apply to each agent
-NUM_FUTURE_STEPS        = 3
+NUM_FUTURE_STEPS        = 0
 
 # environment parameters
-ENVIRONMENT_SIZE        = (10, 60)  # the total size of the environment (length of one side) , Starting Point of Curriculum Only
-WALL_COMPONENTS         = (1, 21)    # Starting Params of Curriculum = TRUE
-OBSTACLE_DENSITY        = (0, 0.75)  # range of densities   Starting Params of Curriculum = TRUE
+ENVIRONMENT_SIZE        = (10, 70)  # the total size of the environment (length of one side) , Starting Point of Curriculum Only
+WALL_COMPONENTS         = (3, 21)    # Starting Params of Curriculum = TRUE
+OBSTACLE_DENSITY        = (0.2, 0.7)  # range of densities   Starting Params of Curriculum = TRUE
 
 DIAG_MVMT               = False  # Diagonal movements allowed?
 a_size                  = 5 + int(DIAG_MVMT) * 4
@@ -46,7 +46,7 @@ PRIMING_LENGTH          = 0   # number of episodes at the beginning to train onl
 MSTAR_CALL_FREQUENCY    = 1
 
 # observation variables
-NUM_CHANNEL             = 8 + NUM_FUTURE_STEPS
+NUM_CHANNEL             = 4 + NUM_FUTURE_STEPS
 
 # others
 EPISODE_START           = episode_count
