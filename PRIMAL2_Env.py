@@ -1,5 +1,6 @@
 from Env_Builder import *
 from od_mstar3.col_set_addition import OutOfTimeError, NoSolutionError
+
 try:
     # from od_mstar3 import od_mstar
     from od_mstar3 import cpp_mstar as od_mstar
@@ -19,7 +20,7 @@ class PRIMAL2_Env(MAPFEnv):
                                           num_agents=num_agents,
                                           IsDiagonal=IsDiagonal, frozen_steps=frozen_steps, isOneShot=isOneShot)
 
-    def _reset(self, new_generator=None,*args):
+    def _reset(self, new_generator=None, *args):
         if new_generator is None:
             self.set_world()
         else:
@@ -78,7 +79,7 @@ class PRIMAL2_Env(MAPFEnv):
 
         VANILLA_VALID_ACTIONS = True
 
-        if VANILLA_VALID_ACTIONS== True :
+        if VANILLA_VALID_ACTIONS == True:
             available_actions = []
             pos = self.world.getPos(agent_ID)
             available_actions.append(0)  # standing still always allowed 
@@ -200,7 +201,7 @@ class DummyEnv(PRIMAL2_Env):
 
 if __name__ == '__main__':
     from matplotlib import pyplot
-    from FlatlandObserver import FlatlandObserver
+    from PRIMAL2_Observer import PRIMAL2_Observer
     from Map_Generator import maze_generator
     from Map_Generator import manual_generator
 
@@ -213,12 +214,12 @@ if __name__ == '__main__':
               [-1, -1, -1, -1, -1, -1, -1]]
     n_agents = 3
     env = PRIMAL2_Env(num_agents=n_agents,
-                      observer=FlatlandObserver(observation_size=5),
+                      observer=PRIMAL2_Observer(observation_size=5),
                       map_generator=maze_generator(env_size=(8, 10),
                                                    wall_components=(3, 8), obstacle_density=(0.3, 0.7)),
                       # map_generator=manual_generator(state_map=state0, goals_map=None),
                       IsDiagonal=False)
-    #for i in range(4):
+    # for i in range(4):
     #    env.step_all({1: 1, 2: 1, 3: 1})
     #    print(env._render())
     print(env.world.state)
@@ -227,16 +228,6 @@ if __name__ == '__main__':
     a = c
     b = c
     for j in range(0, 50):
-          movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c}
-          env.step_all(movement)
-          obs = env._observe()
-          # env._render()
-    #     # print(env.renderer.GIF_frames)
-    #     # env.write_GIF('./','test')
-    #     # print(env.world.agents[1].position_history)
-          print(env.world.state)
-          a = int(input())
-          b = int(input())
-    #     c = int(input())
-    #     print(env.world.getGoal(1))
-    #     # print(env.world.getAstarCosts(tuple(env.world.getPos(1)), tuple(env.world.getGoal(1))))
+        movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c}
+        env.step_all(movement)
+        print(env.world.state)
