@@ -560,8 +560,8 @@ class World:
         """
 
         def random_goal_pos(previous_goals=None, distance=None):
-            next_goal_buffer = {agentID: self.agents[agentID].next_goal for agentID in range(1,self.num_agents+1)}
-            curr_goal_buffer = {agentID: self.agents[agentID].goal_pos for agentID in range(1,self.num_agents+1)}
+            next_goal_buffer = {agentID: self.agents[agentID].next_goal for agentID in range(1, self.num_agents + 1)}
+            curr_goal_buffer = {agentID: self.agents[agentID].goal_pos for agentID in range(1, self.num_agents + 1)}
             if previous_goals is None:
                 previous_goals = {agentID: None for agentID in id_list}
             if distance is None:
@@ -578,7 +578,7 @@ class World:
                 for agentID in id_list:
                     free_on_agents = np.logical_and(self.state > 0, self.state != agentID)
                     free_spaces_for_previous_goal = np.logical_or(free_on_agents, free_for_all)
-                   # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
+                    # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
                     if distance > 0:
                         previous_x, previous_y = previous_goals[agentID]
                         x_lower_bound = (previous_x - distance) if (previous_x - distance) > 0 else 0
@@ -590,20 +590,21 @@ class World:
                     free_spaces_for_previous_goal = [pos.tolist() for pos in free_spaces_for_previous_goal]
 
                     try:
-                        unique = False 
-                        counter = 0 
-                        while unique == False and counter<500: 
+                        unique = False
+                        counter = 0
+                        while unique == False and counter < 500:
                             init_idx = np.random.choice(len(free_spaces_for_previous_goal))
                             init_pos = free_spaces_for_previous_goal[init_idx]
-                            unique= True 
-                            if tuple(init_pos) in next_goal_buffer.values() or tuple(init_pos) in curr_goal_buffer.values() or tuple(init_pos) in new_goals.values()  : 
-                                unique = False 
-                            if previous_goals is not None :
-                                if tuple(init_pos) in previous_goals.values() :
-                                    unique = False 
-                            counter +=1     
-                        if counter >=500 :
-                            print('Hard to find Non Conflicting Goal')    
+                            unique = True
+                            if tuple(init_pos) in next_goal_buffer.values() or tuple(
+                                    init_pos) in curr_goal_buffer.values() or tuple(init_pos) in new_goals.values():
+                                unique = False
+                            if previous_goals is not None:
+                                if tuple(init_pos) in previous_goals.values():
+                                    unique = False
+                            counter += 1
+                        if counter >= 500:
+                            print('Hard to find Non Conflicting Goal')
                         new_goals.update({agentID: tuple(init_pos)})
                     except ValueError:
                         print('wrong goal')
@@ -900,8 +901,7 @@ class MAPFEnv(gym.Env):
         mstar_path = None
         start_time = time.time()
         try:
-            max_time += time_limit
-            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit/5.0)
+            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit / 5.0)
 
         except OutOfTimeError:
             # M* timed out
@@ -918,12 +918,12 @@ class MAPFEnv(gym.Env):
         except:
             c_time = time.time() - start_time
             if c_time > time_limit:
-                return mstar_path
+                return mstar_path  # should be None
 
-            #print("cpp_mstar crash most likely... trying python mstar instead")
+            # print("cpp_mstar crash most likely... trying python mstar instead")
             try:
                 mstar_path = od_mstar.find_path(world, start_positions, goals,
-                                                inflation=inflation, time_limit=time_limit)
+                                                inflation=inflation, time_limit=time_limit - c_time)
             except OutOfTimeError:
                 # M* timed out
                 print("timeout")
@@ -1061,7 +1061,7 @@ class MAPFEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    from FlatlandObserver import FlatlandObserver
+    from Primal2Observer import Primal2Observer
     from Map_Generator import *
     from Primal2Env import Primal2Env
     import numpy as np
@@ -1070,10 +1070,10 @@ if __name__ == "__main__":
     for _ in tqdm(range(2000)):
         n_agents = np.random.randint(low=25, high=30)
         env = Primal2Env(num_agents=n_agents,
-                          observer=FlatlandObserver(observation_size=3),
-                          map_generator=maze_generator(env_size=(10, 30),
-                                                       wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
-                          IsDiagonal=False)
+                         observer=Primal2Observer(observation_size=3),
+                         map_generator=maze_generator(env_size=(10, 30),
+                                                      wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
+                         IsDiagonal=False)
         for agentID in range(1, n_agents + 1):
             pos = env.world.agents[agentID].position
             goal = env.world.agents[agentID].goal_pos

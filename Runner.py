@@ -9,7 +9,7 @@ import GroupLock
 
 from Primal2Env import Primal2Env
 from Primal2Observer import Primal2Observer
-from Map_Generator2 import maze_generator
+from Map_Generator import maze_generator
 
 from Worker import Worker
 import scipy.signal as signal
