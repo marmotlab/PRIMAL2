@@ -10,14 +10,7 @@ import argparse
 import subprocess
 
 
-# - I don't think these are necessary - Emerson
-# from Map_Generator import *
-# from Observer_Builder import DummyObserver
-# from Env_Builder import *
-
 def get_map_names(env_path, result_path, resume_testing):
-    # assert self.worker.test_type == self.test_type
-
     print('loading testing env...')
 
     valid_map_names = []

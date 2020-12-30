@@ -1,6 +1,4 @@
 from Observer_Builder import ObservationBuilder
-import numpy as np
-import copy
 from Env_Builder import *
 from PRIMAL2_Env import PRIMAL2_Env
 
@@ -89,8 +87,7 @@ class PRIMAL1_observer(ObservationBuilder):
                     visible_agents.append(self.world.state[i, j])
                     poss_map[i - top_left[0], j - top_left[1]] = 1
 
-                # we can keep this map even if on goal,
-                # since observation is computed after the refresh of new distance map
+                # we can keep this map even if on goal, since observation is computed after the refresh of new distance map
                 pathlength_map[i - top_left[0], j - top_left[1]] = self.world.agents[agent_id].distanceMap[i, j]
 
         distance = lambda x1, y1, x2, y2: ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** .5
@@ -171,7 +168,6 @@ class PRIMAL1_observer(ObservationBuilder):
 
     def get_astar_map(self):
         """
-
         :return: a dict of 3D np arrays. Each astar_maps[agentID] is a num_future_steps * obs_size * obs_size matrix.
         """
 

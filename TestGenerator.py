@@ -11,7 +11,6 @@ from PRIMAL2_Env import *
 from Observer_Builder import DummyObserver
 from PRIMAL2_Observer import PRIMAL2_Observer
 from Map_Generator import *
-from tqdm import tqdm
 from Env_Builder import *
 
 

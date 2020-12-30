@@ -6,9 +6,6 @@ try:
     from od_mstar3 import cpp_mstar as od_mstar
 except ImportError:
     raise ImportError('cpp_mstar not compiled. Please refer to README')
-from GroupLock import Lock
-import random
-from gym import spaces
 
 
 class PRIMAL2_Env(MAPFEnv):

@@ -1,18 +1,14 @@
-import warnings
 import json
 import os
 import argparse
-
-warnings.filterwarnings('ignore', category=Warning)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-from PRIMAL2_Env import PRIMAL2_Env
 from PRIMAL2_Observer import PRIMAL2_Observer
-from Map_Generator import *
 from Observer_Builder import DummyObserver
 import tensorflow as tf
 from ACNet import ACNet
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from Env_Builder import *
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings('ignore', category=Warning)
 
 
 class RL_Planner(MAPFEnv):
