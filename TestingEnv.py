@@ -5,6 +5,7 @@ from PRIMAL2_Observer import PRIMAL2_Observer
 from Observer_Builder import DummyObserver
 import tensorflow as tf
 from ACNet import ACNet
+from Map_Generator import *
 from Env_Builder import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
