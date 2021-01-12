@@ -198,7 +198,7 @@ if __name__ == "__main__":
     for _ in range(1000):
         generator = maze_generator()
         world = generator()
-        plt.imshow(world)
+        plt.imshow(world[0])  # obstacle map
         plt.pause(0.1)
     plt.ioff()
     plt.show()
