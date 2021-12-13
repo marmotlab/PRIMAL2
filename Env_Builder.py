@@ -1115,26 +1115,3 @@ class MAPFEnv(gym.Env):
 
         frame = painter(self.world.state, self.getPositions(), self.getGoals())
         return frame
-
-
-if __name__ == "__main__":
-    from FlatlandObserver import FlatlandObserver
-    from Map_Generator import *
-    from FlatlandEnv import FlatlandEnv
-    import numpy as np
-    from tqdm import tqdm
-
-    for _ in tqdm(range(2000)):
-        n_agents = np.random.randint(low=25, high=30)
-        env = FlatlandEnv(num_agents=n_agents,
-                          observer=FlatlandObserver(observation_size=3),
-                          map_generator=maze_generator(env_size=(10, 30),
-                                                       wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
-                          IsDiagonal=False)
-        for agentID in range(1, n_agents + 1):
-            pos = env.world.agents[agentID].position
-            goal = env.world.agents[agentID].goal_pos
-            assert agentID == env.world.state[pos]
-            assert agentID == env.world.goals_map[goal]
-        assert len(np.argwhere(env.world.state > 0)) == n_agents
-        assert len(np.argwhere(env.world.goals_map > 0)) == n_agents
