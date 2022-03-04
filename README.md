@@ -12,6 +12,14 @@
 - Name training run via `training_version` in `parameters.py`
 - call `python driver.py`
 
+
+## Frequently asked questions
+1. I got `pyglet.canvas.xlib.NoSuchDisplayException: Cannot connect to "None"` when running on a server
+Running your code starting with `xvfb-run` will solve the problem. You may refer to https://stackoverflow.com/questions/60922076/pyglet-canvas-xlib-nosuchdisplayexception-cannot-connect-to-none-only-happens and relevant issues on StackFlow for help.
+
+2. In one-shot environment, why agent turns black after reaching a goal?
+In the one-shot scenario, agent will 'disappear'(i.e., removed from the env). For visualization we keep it as black. Removal of agent who has achieved its goal is necessary, since a lot of narrow corridors in the map could cause unsolvable block and collision. One-shot scenario per se is just a way to test the optimality of the planner. By contrast we do not remove any agents for any reason in continuous env.
+
 ## Key Files
 - `parameters.py` - Training parameters.
 - `driver.py` - Driver of program. Holds global network for A3C.
