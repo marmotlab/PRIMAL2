@@ -14,6 +14,8 @@ from gym import spaces
     Reward: ACTION_COST for each action, GOAL_REWARD when robot arrives at target
 '''
 
+## New Action Space: {0,1,2,3} -> {static, forward, CW, CCW}
+
 
 class Primal2Env(MAPFEnv):
     metadata = {"render.modes": ["human", "ansi"]}
@@ -56,6 +58,7 @@ class Primal2Env(MAPFEnv):
             self.isStandingOnGoal[agentID] = False
         self.individual_rewards[agentID] = reward
 
+    #TODO change how to find and check for valid actions from given position
     def listValidActions(self, agent_ID, agent_obs):
         """
         :return: action:int, pos:(int,int)
@@ -81,26 +84,35 @@ class Primal2Env(MAPFEnv):
                     return pos
             return None
 
+
+        # corridor_map[x,y][0] = corridor ID
+        # corridor_map[x,y][1] = is agent inside corridor
+
         available_actions = []
         pos = self.world.getPos(agent_ID)
         # if the agent is inside a corridor
         if self.world.corridor_map[pos[0], pos[1]][1] == 1:
             corridor_id = self.world.corridor_map[pos[0], pos[1]][0]
             if [pos[0], pos[1]] not in self.world.corridors[corridor_id]['StoppingPoints']:
+                #TODO
                 possible_moves = self.world.blank_env_valid_neighbor(*pos)
                 last_position = get_last_pos(agent_ID, pos)
                 for possible_position in possible_moves:
+                    #TODO now only 1 possible move, originally split into
+                    # Here: In corridor, not on a stopping point
                     if possible_position is not None and possible_position != last_position \
                             and self.world.state[possible_position[0], possible_position[1]] == 0:
+                        # Here not last position and valid state?
                         available_actions.append(dir2action(tuple_minus(possible_position, pos)))
 
+                    # TODO
                     elif len(self.world.corridors[corridor_id]['EndPoints']) == 1 and possible_position is not None \
-                            and possible_moves.count(None) == 3:
+                            and possible_moves.count(None) == 3: # where there is only 1 possible move and 3 "None" returned 
                         available_actions.append(dir2action(tuple_minus(possible_position, pos)))
 
                 if not available_actions:
                     available_actions.append(0)
-            else:
+            else: # Here: In corridor, on a stopping point
                 possible_moves = self.world.blank_env_valid_neighbor(*pos)
                 last_position = get_last_pos(agent_ID, pos)
                 if last_position in self.world.corridors[corridor_id]['Positions']:
@@ -116,10 +128,18 @@ class Primal2Env(MAPFEnv):
                             available_actions.append(dir2action(tuple_minus(possible_position, pos)))
                     if not available_actions:
                         available_actions.append(0)
+        # agent not in corridor
         else:
-            available_actions.append(0)  # standing still always allowed 
-            num_actions = 4 + 1 if not self.IsDiagonal else 8 + 1
-            for action in range(1, num_actions):
+            available_actions.append(0)  # standing still always allowed when not in corridor
+            #TODO change logic for available_actions for orientaion
+            num_actions = 2  # now only 0-3, only need 0,1
+            for action in range(0, num_actions): 
+
+                # only valid action is forward in orientation
+                #have position
+                # only check static or forward?
+                
+
                 direction = action2dir(action)
                 new_pos = tuple_plus(direction, pos)
                 lastpos = None
@@ -149,6 +169,7 @@ class Primal2Env(MAPFEnv):
             return 0
         return 1
 
+    #TODO check deltay map logic
     def get_convention_validity(self, observation, agent_ID, pos):
         top_left = (self.world.getPos(agent_ID)[0] - self.obs_size // 2,
                     self.world.getPos(agent_ID)[1] - self.obs_size // 2)
@@ -206,7 +227,9 @@ if __name__ == '__main__':
     a = c
     b = c
     for j in range(0, 50):
-          movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c}
+          # Why?? the movement dictionary is checked in Env_Builder in step_all()
+          # Movement dict are checked to be key/value of agentID/valid move range(5)
+          movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c} 
           env.step_all(movement)
           obs = env._observe()
 

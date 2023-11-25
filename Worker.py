@@ -156,6 +156,7 @@ class Worker():
                 self.synchronize()  # synchronize starting time of the threads
 
                 # Get Information For Each Agent 
+                #TODO
                 validActions = self.env.listValidActions(self.agentID,
                                                          joint_observations[self.metaAgentID][self.agentID])
 

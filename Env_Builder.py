@@ -28,7 +28,7 @@ def opposite_actions(action, isDiagonal=False):
         checking_table = {0: -1, 1: 3, 2: 4, 3: 1, 4: 2}
     return checking_table[action]
 
-
+# New action mapping {0,1,2,3} -> {static, forward, CW, CCW}
 def action2dir(action):
     checking_table = {0: (0, 0), 1: (0, 1), 2: (1, 0), 3: (0, -1), 4: (-1, 0)}
     return checking_table[action]
@@ -38,12 +38,12 @@ def dir2action(direction):
     checking_table = {(0, 0): 0, (0, 1): 1, (1, 0): 2, (0, -1): 3, (-1, 0): 4}
     return checking_table[direction]
 
-
+# Change to support 3 tuple
 def tuple_plus(a, b):
     """ a + b """
     return tuple(map(add, a, b))
 
-
+#Change to support 3 tuple
 def tuple_minus(a, b):
     """ a - b """
     return tuple(map(sub, a, b))
@@ -174,6 +174,10 @@ class Agent:
     ###########
     """
 
+    # Change Agent position to a 3 tuple (x, y, orientation)
+    # Orientation: {0, 1, 2, 3}: 0: east, 1: south, 2: west, 3: north
+
+
     def __init__(self, isDiagonal=False):
         self._path_count = -1
         self.IsDiagonal = isDiagonal
@@ -189,23 +193,29 @@ class Agent:
         self.action_history, self.goal_pos, self.distanceMap, self.dones, self.status, self.next_goal, self.next_distanceMap \
             = None, [], None, None, [(None, None)], [(None, None)], None, None, 0, None, None, None
 
+
+    # Question: when calling move(pos), do you provide a potential new move as the pos given?
     def move(self, pos, status=None):
         if pos is None:
             pos = self.position
         if self.position is not None:
+            # Changed the tuples to include a 0 for orienation (no change when adding)
+            #TODO Change to reflect orientation + forward move as only valid move
             assert pos in [self.position,
-                           tuple_plus(self.position, (0, 1)), tuple_plus(self.position, (0, -1)),
-                           tuple_plus(self.position, (1, 0)), tuple_plus(self.position, (-1, 0)), ], \
+                           tuple_plus(self.position, (0, 1, 0)), tuple_plus(self.position, (0, -1, 0)),
+                           tuple_plus(self.position, (1, 0, 0)), tuple_plus(self.position, (-1, 0, 0)), ], \
                 "only 1 step 1 cell allowed. Previous pos:" + str(self.position)
         self.add_history(pos, status)
 
     def add_history(self, position, status):
-        assert len(position) == 2
+        assert len(position) == 3 # Change to 3
         self.status = status
         self._path_count += 1
         self.position = tuple(position)
         if self._path_count != 0:
             direction = tuple_minus(position, self.position_history[-1])
+
+            #TODO Change logic of actionDir to find direction
             action = dir2action(direction)
             assert action in list(range(4 + 1)), \
                 "direction not in actionDir, something going wrong"
@@ -829,6 +839,7 @@ class MAPFEnv(gym.Env):
             raise ValueError("Invalid agent_id given")
         return self.obs_dict
 
+    #TODO
     def step_all(self, movement_dict):
         """
         Agents are forced to freeze self.frozen_steps steps if they are standing on their goals.
