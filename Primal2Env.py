@@ -58,7 +58,7 @@ class Primal2Env(MAPFEnv):
             self.isStandingOnGoal[agentID] = False
         self.individual_rewards[agentID] = reward
 
-    #TODO change how to find and check for valid actions from given position
+    # DONE change how to find and check for valid actions from given position
     def listValidActions(self, agent_ID, agent_obs):
         """
         :return: action:int, pos:(int,int)
@@ -68,7 +68,6 @@ class Primal2Env(MAPFEnv):
             if standing on goal: Only going 'forward' allowed
             if not standing on goal: only going 'forward' allowed
         """
-
         def get_last_pos(agentID, position):
             """
             get the last different position of an agent
@@ -94,69 +93,67 @@ class Primal2Env(MAPFEnv):
         if self.world.corridor_map[pos[0], pos[1]][1] == 1:
             corridor_id = self.world.corridor_map[pos[0], pos[1]][0]
             if [pos[0], pos[1]] not in self.world.corridors[corridor_id]['StoppingPoints']:
-                #TODO
-                possible_moves = self.world.blank_env_valid_neighbor(*pos)
+                possible_moves = self.world.valid_neighbors_oriented(pos) # DONE edit for orientation in Env_Builder
                 last_position = get_last_pos(agent_ID, pos)
                 for possible_position in possible_moves:
-                    #TODO now only 1 possible move, originally split into
                     # Here: In corridor, not on a stopping point
                     if possible_position is not None and possible_position != last_position \
                             and self.world.state[possible_position[0], possible_position[1]] == 0:
-                        # Here not last position and valid state?
-                        available_actions.append(dir2action(tuple_minus(possible_position, pos)))
+                        # Here not last position and valid state
+                        # DONE create 2 tuple action from 3 tuple position (repeated below)
+                        temp_action = (tuple_minus(possible_position, pos))
+                        available_actions.append(dir2action(temp_action[0], temp_action[1]))
 
-                    # TODO
+                    # TODO What does corridors[ID][Endpoints] ==1 mean... end of a corridor? 
                     elif len(self.world.corridors[corridor_id]['EndPoints']) == 1 and possible_position is not None \
                             and possible_moves.count(None) == 3: # where there is only 1 possible move and 3 "None" returned 
-                        available_actions.append(dir2action(tuple_minus(possible_position, pos)))
+                        temp_action = (tuple_minus(possible_position, pos))
+                        available_actions.append(dir2action(temp_action[0], temp_action[1]))
 
                 if not available_actions:
                     available_actions.append(0)
             else: # Here: In corridor, on a stopping point
-                possible_moves = self.world.blank_env_valid_neighbor(*pos)
+                possible_moves = self.world.valid_neighbors_oriented(pos)
                 last_position = get_last_pos(agent_ID, pos)
                 if last_position in self.world.corridors[corridor_id]['Positions']:
                     available_actions.append(0)
                     for possible_position in possible_moves:
                         if possible_position is not None and possible_position != last_position \
                                 and self.world.state[possible_position[0], possible_position[1]] == 0:
-                            available_actions.append(dir2action(tuple_minus(possible_position, pos)))
+                            temp_action = (tuple_minus(possible_position, pos))
+                            available_actions.append(dir2action(temp_action[0], temp_action[1]))
                 else:
                     for possible_position in possible_moves:
                         if possible_position is not None \
                                 and self.world.state[possible_position[0], possible_position[1]] == 0:
-                            available_actions.append(dir2action(tuple_minus(possible_position, pos)))
+                            temp_action = (tuple_minus(possible_position, pos))
+                            available_actions.append(dir2action(temp_action[0], temp_action[1]))
                     if not available_actions:
                         available_actions.append(0)
         # agent not in corridor
         else:
             available_actions.append(0)  # standing still always allowed when not in corridor
-            #TODO change logic for available_actions for orientaion
-            num_actions = 2  # now only 0-3, only need 0,1
+            # DONE change logic for available_actions for orientaion
+            num_actions = 4  # now only 0-3
             for action in range(0, num_actions): 
+                # use new action2position(action, current_position) to get each of the potential new_positions
+                new_position = action2position(action, pos)
 
-                # only valid action is forward in orientation
-                #have position
-                # only check static or forward?
-                
-
-                direction = action2dir(action)
-                new_pos = tuple_plus(direction, pos)
                 lastpos = None
-                blocking_valid = self.get_blocking_validity(agent_obs, agent_ID, new_pos)
+                blocking_valid = self.get_blocking_validity(agent_obs, agent_ID, new_position)
                 if not blocking_valid:
                     continue
                 try:
                     lastpos = self.world.agents[agent_ID].position_history[-2]
                 except:
                     pass
-                if new_pos == lastpos:
+                if new_position == lastpos:
                     continue
-                if self.world.corridor_map[new_pos[0], new_pos[1]][1] == 1:
-                    valid = self.get_convention_validity(agent_obs, agent_ID, new_pos)
+                if self.world.corridor_map[new_position[0], new_position[1]][1] == 1:
+                    valid = self.get_convention_validity(agent_obs, agent_ID, new_position)
                     if not valid:
                         continue
-                if self.world.state[new_pos[0], new_pos[1]] == 0:
+                if self.world.state[new_position[0], new_position[1]] == 0:
                     available_actions.append(action)
 
         return available_actions
@@ -169,7 +166,6 @@ class Primal2Env(MAPFEnv):
             return 0
         return 1
 
-    #TODO check deltay map logic
     def get_convention_validity(self, observation, agent_ID, pos):
         top_left = (self.world.getPos(agent_ID)[0] - self.obs_size // 2,
                     self.world.getPos(agent_ID)[1] - self.obs_size // 2)
@@ -227,8 +223,6 @@ if __name__ == '__main__':
     a = c
     b = c
     for j in range(0, 50):
-          # Why?? the movement dictionary is checked in Env_Builder in step_all()
-          # Movement dict are checked to be key/value of agentID/valid move range(5)
           movement = {1: a, 2: b, 3: c, 4: c, 5: c, 6: c, 7: c, 8: c} 
           env.step_all(movement)
           obs = env._observe()

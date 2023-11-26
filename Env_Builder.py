@@ -29,6 +29,35 @@ def opposite_actions(action, isDiagonal=False):
     return checking_table[action]
 
 # New action mapping {0,1,2,3} -> {static, forward, CW, CCW}
+def forwardMove(position):
+    new_position = ()
+    if position[2] == 0:
+        new_position = tuple_plus(position, (1,0,0))
+    elif position[2] == 1:
+        new_position = tuple_plus(position, (0,-1,0))
+    elif position[2] == 2:
+        new_position = tuple_plus(position, (-1,0,0))
+    elif position[2] == 3:
+        new_position = tuple_plus(position, (0,1,0))
+    
+    return new_position
+
+# New fucntion to determine previous position
+def previousPos2direction(position, previous_position):
+    return 0
+
+# New function to take action(0-3) and position and return new position
+def action2position(action, position):
+    new_position = position
+    # if action == 0, new pos = pos
+    if action == 1:
+        new_position = forwardMove(position)
+    elif action == 2: #rotate CW, keep x,y the same
+        new_position[2] = (position[2] + 1) % 4
+    elif action == 3: #rotate CCW, keep x,y the same
+        new_position[2] = (position[2] + 3) % 4
+    return new_position
+
 def action2dir(action):
     checking_table = {0: (0, 0), 1: (0, 1), 2: (1, 0), 3: (0, -1), 4: (-1, 0)}
     return checking_table[action]
@@ -200,11 +229,9 @@ class Agent:
             pos = self.position
         if self.position is not None:
             # Changed the tuples to include a 0 for orienation (no change when adding)
-            #TODO Change to reflect orientation + forward move as only valid move
-            assert pos in [self.position,
-                           tuple_plus(self.position, (0, 1, 0)), tuple_plus(self.position, (0, -1, 0)),
-                           tuple_plus(self.position, (1, 0, 0)), tuple_plus(self.position, (-1, 0, 0)), ], \
-                "only 1 step 1 cell allowed. Previous pos:" + str(self.position)
+            #DONE: Change to reflect orientation + forward move as only valid move
+            assert pos in [self.position, forwardMove(self.position), ], \
+                "only 1 step 1 cell in orientation allowed. Previous pos:" + str(self.position)
         self.add_history(pos, status)
 
     def add_history(self, position, status):
@@ -213,6 +240,7 @@ class Agent:
         self._path_count += 1
         self.position = tuple(position)
         if self._path_count != 0:
+            #TODO retrieve previous position with new orientation
             direction = tuple_minus(position, self.position_history[-1])
 
             #TODO Change logic of actionDir to find direction
@@ -314,6 +342,7 @@ class World:
                 else:
                     self.corridor_map[(i, j)] = [-1, -1]
         # Compute All Corridors and End-points, store them in self.corridors , update corridor_map
+        #TODO
         for i in range(self.state.shape[0]):
             for j in range(self.state.shape[1]):
                 positions = self.blank_env_valid_neighbor(i, j)
@@ -367,6 +396,7 @@ class World:
                 self.corridors[t]['Positions'].extend(temp_list)
                 self.corridors[t]['Positions'].extend(temp_end)
 
+            #TODO
             elif index == len(self.corridors[t]['Positions']) - 1 and len(self.corridors[t]['EndPoints']) == 2:
                 positions2 = self.blank_env_valid_neighbor(self.corridors[t]['EndPoints'][1][0],
                                                            self.corridors[t]['EndPoints'][1][1])
@@ -397,6 +427,7 @@ class World:
                 self.corridors[t]['StoppingPoints'].append(None)
         return
 
+    #TODO
     def check_for_singular_state(self, positions):
         counter = 0
         for num in range(4):
@@ -406,6 +437,7 @@ class World:
                     counter += 1
         return counter > 0
 
+    #TODO
     def visit(self, i, j, corridor_id):
         positions = self.blank_env_valid_neighbor(i, j)
         if positions.count(None) in [0, 1]:
@@ -421,7 +453,8 @@ class World:
                     self.visit(positions[num][0], positions[num][1], corridor_id)
         else:
             print('Weird')
-
+    
+    # Keep blank_env_valid_neighbor for corridor calculations w/in this file, create new valid_neighbors_oriented() for listValidActions() in Primal2.py below
     def blank_env_valid_neighbor(self, i, j):
         possible_positions = [None, None, None, None]
         move = [[0, 1], [1, 0], [-1, 0], [0, -1]]
@@ -434,6 +467,22 @@ class World:
                 if 0 <= x < self.state.shape[0] and 0 <= y < self.state.shape[1]:
                     if self.state[x, y] != -1:
                         possible_positions[num] = (x, y)
+                        continue
+        return possible_positions
+
+    #DONE add orientation
+    def valid_neighbors_oriented(self, position):
+        possible_positions = [None, None, None, None] # static, forward, CW, CCW
+        if self.state[position[0], position[1]] == -1:
+            return possible_positions
+        else:
+            for action in range(4):
+                new_position = action2position(action, position)
+                x = new_position[0]
+                y = new_position[1]
+                if 0 <= x < self.state.shape[0] and 0 <= y < self.state.shape[1]:
+                    if self.state[x, y] != -1:
+                        possible_positions[action] = new_position
                         continue
         return possible_positions
 
