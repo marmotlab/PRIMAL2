@@ -7,6 +7,7 @@ import warnings
 from od_mstar3.col_set_addition import OutOfTimeError, NoSolutionError
 from od_mstar3 import od_mstar
 from od_mstar3 import cpp_mstar
+from LNS_CBS import cbs_py
 from GroupLock import Lock
 from matplotlib.colors import *
 from gym.envs.classic_control import rendering
@@ -21,6 +22,7 @@ def make_gif(images, fname):
 
 
 def opposite_actions(action, isDiagonal=False):
+    #NOT NEEDED IG??
     if isDiagonal:
         checking_table = {0: -1, 1: 3, 2: 4, 3: 1, 4: 2}
         raise NotImplemented
@@ -30,8 +32,9 @@ def opposite_actions(action, isDiagonal=False):
 
 # New action mapping {0,1,2,3} -> {static, forward, CW, CCW}
 def forwardMove(position):
+    #checked
     new_position = ()
-    if position[2] == 0:
+    if position[2] == 0: # east
         new_position = tuple_plus(position, (1,0,0))
     elif position[2] == 1:
         new_position = tuple_plus(position, (0,-1,0))
@@ -44,10 +47,12 @@ def forwardMove(position):
 
 # New fucntion to determine previous position
 def previousPos2direction(position, previous_position):
+    #Not needed ig?
     return 0
 
 # New function to take action(0-3) and position and return new position
 def action2position(action, position):
+    #checked
     new_position = position
     # if action == 0, new pos = pos
     if action == 1:
@@ -59,7 +64,7 @@ def action2position(action, position):
     return new_position
 
 def action2dir(action):
-    checking_table = {0: (0, 0), 1: (0, 1), 2: (1, 0), 3: (0, -1), 4: (-1, 0)}
+    checking_table = {0: (0, 0), 1: (0, 1), 2: (0, 0), 3: (0, 0)}
     return checking_table[action]
 
 
@@ -206,6 +211,7 @@ def getAstarDistanceMap(map: np.array, start: tuple, goal: tuple, isDiagonal: bo
         elif current[2] == 3 and goal[1] < current[1]: # orient north, goal south
             penalty += 2
             
+            
         return dx + dy + penalty
 
     # heuristic_cost_estimate = lambda x, y: math.hypot(x[0] - y[0], x[1] - y[1])
@@ -279,16 +285,16 @@ class Agent:
         if pos is None:
             pos = self.position
         if self.position is not None:
-            # Changed the tuples to include a 0 for orienation (no change when adding)
+            # Changed the tuples to include a 0 for orientation (no change when adding)
             #DONE: Change to reflect orientation + forward move as only valid move
             assert pos in [self.position, forwardMove(self.position), ], \
                 "only 1 step 1 cell in orientation allowed. Previous pos:" + str(self.position)
         self.add_history(pos, status)
 
     def add_history(self, position, status):
-        assert len(position) == 3 # Change to 3
+        assert len(position) == 3 # Change to 3: (x,y,o)
         self.status = status
-        self._path_count += 1
+        self._path_count += 1 #TODO +1 path_count for each forward move and/or turn?
         self.position = tuple(position)
         if self._path_count != 0:
             #TODO retrieve previous position with new orientation
@@ -303,7 +309,7 @@ class Agent:
         self.position_history.append(tuple(position))
 
         self.position_history = _heap(self.position_history, 30)
-        self.direction_history = _heap(self.direction_history, 30)
+        self.direction_history = _heap(self.direction_history, 30) # TODO Only used in get_history() which is not used ever
         self.action_history = _heap(self.action_history, 30)
 
 
@@ -313,6 +319,7 @@ class World:
     reset_world:
     Do not add action pruning, reward structure or any other routine for training in this class. Pls add in upper class MAPFEnv
     """
+    #self.state == -1 means obstacle, 0 means free space, any other number is the agentID occupying that space
 
     def __init__(self, map_generator, num_agents, isDiagonal=False):
         self.num_agents = num_agents
@@ -323,6 +330,7 @@ class World:
         self.map_generator = map_generator
         self.isDiagonal = isDiagonal
 
+        # DONE agents_init_pos now holds agentID as key: (x,y,o) as value
         self.agents_init_pos, self.goals_init_pos = None, None
         self.reset_world()
         self.init_agents_and_goals()
@@ -340,12 +348,19 @@ class World:
                         agentID = state_map[i, j]
                         agents.update({agentID: (i, j)})
             return agents
-
+        
+        # self.state is the size of the world map and can have values [-1, 0, 1, ..., num_agents]
+        # if self.state > 0, then it is an agentID. If self.state == -1, then it is an obstacle. If self.state == 0, then it is free space
+        
+        # self.goals_map is the size of the world map and can have values [0, 1, ..., num_agents]. 
+        # A value of 0 means no goal, a value of 1 means goal for agent 1, etc.
         self.state, self.goals_map = self.map_generator()
+
         # detect manual world
         if (self.state > 0).any():
             self.manual_world = True
             self.agents_init_pos = scan_for_agents(self.state)
+            #TODO issues with inital agent_init_pos just being (x,y)
             if self.num_agents is not None and self.num_agents != len(self.agents_init_pos.keys()):
                 warnings.warn("num_agent does not match the actual agent number in manual map! "
                               "num_agent has been set to be consistent with manual map.")
@@ -393,7 +408,6 @@ class World:
                 else:
                     self.corridor_map[(i, j)] = [-1, -1]
         # Compute All Corridors and End-points, store them in self.corridors , update corridor_map
-        #TODO
         for i in range(self.state.shape[0]):
             for j in range(self.state.shape[1]):
                 positions = self.blank_env_valid_neighbor(i, j)
@@ -447,7 +461,6 @@ class World:
                 self.corridors[t]['Positions'].extend(temp_list)
                 self.corridors[t]['Positions'].extend(temp_end)
 
-            #TODO
             elif index == len(self.corridors[t]['Positions']) - 1 and len(self.corridors[t]['EndPoints']) == 2:
                 positions2 = self.blank_env_valid_neighbor(self.corridors[t]['EndPoints'][1][0],
                                                            self.corridors[t]['EndPoints'][1][1])
@@ -478,7 +491,6 @@ class World:
                 self.corridors[t]['StoppingPoints'].append(None)
         return
 
-    #TODO
     def check_for_singular_state(self, positions):
         counter = 0
         for num in range(4):
@@ -488,7 +500,6 @@ class World:
                     counter += 1
         return counter > 0
 
-    #TODO
     def visit(self, i, j, corridor_id):
         positions = self.blank_env_valid_neighbor(i, j)
         if positions.count(None) in [0, 1]:
@@ -505,7 +516,7 @@ class World:
         else:
             print('Weird')
     
-    # Keep blank_env_valid_neighbor for corridor calculations w/in this file, create new valid_neighbors_oriented() for listValidActions() in Primal2.py below
+    # Keep blank_env_valid_neighbor for corridor calculations w/in this file, create new valid_neighbors_oriented() for listValidActions() in Primal2ENv.py below
     def blank_env_valid_neighbor(self, i, j):
         possible_positions = [None, None, None, None]
         move = [[0, 1], [1, 0], [-1, 0], [0, -1]]
@@ -537,6 +548,7 @@ class World:
                         continue
         return possible_positions
 
+    #TODO might need to add orientation to the position
     def getPos(self, agent_id):
         return tuple(self.agents[agent_id].position)
 
@@ -621,7 +633,7 @@ class World:
         # no corridor population restriction
         if not self.restrict_init_corridor or (self.restrict_init_corridor and self.manual_world):
             self.put_goals(list(range(1, self.num_agents + 1)), self.goals_init_pos)
-            self._put_agents(list(range(1, self.num_agents + 1)), self.agents_init_pos)
+            self._put_agents(list(range(1, self.num_agents + 1)), self.agents_init_pos) #TODO do agents init pos have (x,y,o)?
         # has corridor population restriction
         else:
             check = self.put_goals(list(range(1, self.num_agents + 1)), self.goals_init_pos)
@@ -630,6 +642,7 @@ class World:
                 if manual_positions is not None:
                     self._put_agents(list(range(1, self.num_agents + 1)), manual_positions)
 
+    #DONE need to generate a orientation with new agents placed 
     def _put_agents(self, id_list, manual_pos=None):
         """
         put some agents in the blank env, saved history data in self.agents and self.state
@@ -642,17 +655,20 @@ class World:
             free_space = np.argwhere(np.logical_or(self.state == 0, self.goals_map == 0) == 1)
             new_idx = np.random.choice(len(free_space), size=len(id_list), replace=False)
             init_poss = [free_space[idx] for idx in new_idx]
+        #TODO manual_pos of (x,y) but still a random orientation
         else:
             assert len(manual_pos.keys()) == len(id_list)
             init_poss = [manual_pos[agentID] for agentID in id_list]
+
         assert len(init_poss) == len(id_list)
         for idx, agentID in enumerate(id_list):
             self.agents[agentID].ID = agentID
             self.agents_init_pos = {}
             if self.state[init_poss[idx][0], init_poss[idx][1]] in [0, agentID] \
                     and self.goals_map[init_poss[idx][0], init_poss[idx][1]] != agentID:
+                orientation = np.random.randint(4) # DONE add a random orientation for each agent init_pos
                 self.state[init_poss[idx][0], init_poss[idx][1]] = agentID
-                self.agents_init_pos.update({agentID: (init_poss[idx][0], init_poss[idx][1])})
+                self.agents_init_pos.update({agentID: (init_poss[idx][0], init_poss[idx][1], orientation)})
             else:
                 print(self.state)
                 print(init_poss)
@@ -661,6 +677,7 @@ class World:
             self.agents[agentID].distanceMap = getAstarDistanceMap(self.state, self.agents[agentID].position,
                                                                    self.agents[agentID].goal_pos)
 
+    # DONE no changes needed after first pass
     def put_goals(self, id_list, manual_pos=None):
         """
         put a goal of single agent in the env, if the goal already exists, remove that goal and put a new one
@@ -676,20 +693,20 @@ class World:
                 previous_goals = {agentID: None for agentID in id_list}
             if distance is None:
                 distance = self.goal_generate_distance
-            free_for_all = np.logical_and(self.state == 0, self.goals_map == 0)
+            free_for_all = np.logical_and(self.state == 0, self.goals_map == 0) # valid spot with no goal, free_for_all = 1
             # print(previous_goals)
-            if not all(previous_goals.values()):  # they are new born agents
+            if not all(previous_goals.values()):  # they are new born agents, all previous goals are None
                 free_space = np.argwhere(free_for_all == 1)
                 init_idx = np.random.choice(len(free_space), size=len(id_list), replace=False)
                 new_goals = {agentID: tuple(free_space[init_idx[agentID - 1]]) for agentID in id_list}
-                return new_goals
-            else:
+                return new_goals # each agent ID is mapped to the tuple of its random selected free space 
+            else: # not new born agents aka they have previous goals
                 new_goals = {}
                 for agentID in id_list:
                     free_on_agents = np.logical_and(self.state > 0, self.state != agentID)
                     free_spaces_for_previous_goal = np.logical_or(free_on_agents, free_for_all)
                     # free_spaces_for_previous_goal = np.logical_and(free_spaces_for_previous_goal, self.goals_map==0)
-                    if distance > 0:
+                    if distance > 0: # distance in this case is preset to 2, specifying a region around the prev goal that is not free
                         previous_x, previous_y = previous_goals[agentID]
                         x_lower_bound = (previous_x - distance) if (previous_x - distance) > 0 else 0
                         x_upper_bound = previous_x + distance + 1
@@ -702,6 +719,7 @@ class World:
                     try:
                         unique = False
                         counter = 0
+                        # NOTE init_pos within this while loop are used just for (x,y) w/out orientation
                         while unique == False and counter < 500:
                             init_idx = np.random.choice(len(free_spaces_for_previous_goal))
                             init_pos = free_spaces_for_previous_goal[init_idx]
@@ -739,7 +757,7 @@ class World:
                         # set agent.goal_pos
                         self.agents[agentID].goal_pos = (new_goals[agentID][0], new_goals[agentID][1])
                         # set agent.next_goal
-                        new_next_goals = random_goal_pos(new_goals, distance=self.goal_generate_distance)
+                        new_next_goals = random_goal_pos(new_goals, distance=self.goal_generate_distance) #goal_generate distance = 2 from init
                         if new_next_goals is None:
                             return None
                         self.agents[agentID].next_goal = (new_next_goals[agentID][0], new_next_goals[agentID][1])
@@ -757,7 +775,7 @@ class World:
                         # remove previous goal
                         if previous_goals[agentID] is not None:
                             self.goals_map[previous_goals[agentID][0], previous_goals[agentID][1]] = 0
-                else:
+                else: # self.state < 0, obstacle
                     print(self.state)
                     print(self.goals_map)
                     raise ValueError('invalid manual_pos for goal' + str(agentID) + ' at: ', str(new_goals[agentID]))
@@ -794,6 +812,7 @@ class World:
 
         if self.isDiagonal is True:
             raise NotImplemented
+        # pass through new position tuple (x, y, orientation)
         Assumed_newPos_dict = {}
         newPos_dict = {}
         status_dict = {agentID: None for agentID in range(1, self.num_agents + 1)}
@@ -801,23 +820,34 @@ class World:
 
         # detect env collision
         for agentID in range(1, self.num_agents + 1):
-            direction_vector = action2dir(movement_dict[agentID])
-            newPos = tuple_plus(self.getPos(agentID), direction_vector)
+            ## --old code snippet--
+            # direction_vector = action2dir(movement_dict[agentID])
+            # newPos = tuple_plus(self.getPos(agentID), direction_vector)
+            ## 
+            ## --new code snippet--
+            # get the updated position (including orientation) of the agent given its action and current position.
+            newPos = action2position(movement_dict[agentID], self.getPos(agentID))
+
             Assumed_newPos_dict.update({agentID: newPos})
+            # check for out of bounds positions
             if newPos[0] < 0 or newPos[0] > self.state.shape[0] or newPos[1] < 0 \
-                    or newPos[1] > self.state.shape[1] or self.state[newPos] == -1:
+                    or newPos[1] > self.state.shape[1] or self.state[newPos[:2]] == -1:
+                # sets the agent status to -1 if it is out of bounds or collides with an obstacle
                 status_dict[agentID] = -1
+                # sets the new position to the current position if it is out of bounds or collides with an obstacle
+                # (i.e. the agent does not move)
                 newPos_dict.update({agentID: self.getPos(agentID)})
                 Assumed_newPos_dict[agentID] = self.getPos(agentID)
                 not_checked_list.remove(agentID)
                 # collide, stay at the same place
 
-        # detect swap collision
+        # DONE detect swap collision -- might need to check orientation
 
         for agentID in copy.deepcopy(not_checked_list):
+            # get the agentID of the agent that is standing on the assumed new position of the current agent
             collided_ID = self.state[Assumed_newPos_dict[agentID]]
-            if collided_ID != 0:  # some one is standing on the assumed pos
-                if Assumed_newPos_dict[collided_ID] == self.getPos(agentID):  # he wants to swap
+            if collided_ID != 0:  # another agent is standing on the assumed pos
+                if Assumed_newPos_dict[collided_ID][:2] == self.getPos(agentID)[:2]:  # he wants to swap
                     if status_dict[agentID] is None:
                         status_dict[agentID] = -2
                         newPos_dict.update({agentID: self.getPos(agentID)})  # stand still
@@ -829,22 +859,26 @@ class World:
                         Assumed_newPos_dict[collided_ID] = self.getPos(collided_ID)
                         not_checked_list.remove(collided_ID)
 
-        # detect cell-wise collision
+        # DONE detect cell-wise collision -- might need to check orientation
+        # I changed this section to not consider orientation.
         for agentID in copy.deepcopy(not_checked_list):
             other_agents_dict = copy.deepcopy(Assumed_newPos_dict)
             other_agents_dict.pop(agentID)
-            if Assumed_newPos_dict[agentID] in newPos_dict.values():
+            #OLD_CODE if Assumed_newPos_dict[agentID] in newPos_dict.values():
+            if any(Assumed_newPos_dict[agentID][:2] == newPos[:2] for newPos in newPos_dict.values()):
                 status_dict[agentID] = -3
                 newPos_dict.update({agentID: self.getPos(agentID)})  # stand still
                 Assumed_newPos_dict[agentID] = self.getPos(agentID)
                 not_checked_list.remove(agentID)
-            elif Assumed_newPos_dict[agentID] in other_agents_dict.values():
+            # elif Assumed_newPos_dict[agentID] in other_agents_dict.values():
+            elif any(Assumed_newPos_dict[agentID][:2] == other_agent_pos[:2] for other_agent_pos in other_agents_dict.values()):
                 other_coming_agents = get_key(Assumed_newPos_dict, Assumed_newPos_dict[agentID])
                 other_coming_agents.remove(agentID)
                 # if the agentID is the biggest among all other coming agents,
+                # NOTE new way to prioritize based on orientation
                 # allow it to move. Else, let it stand still
                 if agentID < min(other_coming_agents):
-                    status_dict[agentID] = 1 if Assumed_newPos_dict[agentID] == self.agents[agentID].goal_pos else 0
+                    status_dict[agentID] = 1 if Assumed_newPos_dict[agentID][:2] == self.agents[agentID].goal_pos else 0
                     newPos_dict.update({agentID: Assumed_newPos_dict[agentID]})
                     not_checked_list.remove(agentID)
                 else:
@@ -855,11 +889,13 @@ class World:
 
         # the rest are valid actions
         for agentID in copy.deepcopy(not_checked_list):
-            status_dict[agentID] = 1 if Assumed_newPos_dict[agentID] == self.agents[agentID].goal_pos else 0
+            status_dict[agentID] = 1 if Assumed_newPos_dict[agentID][:2] == self.agents[agentID].goal_pos else 0
             newPos_dict.update({agentID: Assumed_newPos_dict[agentID]})
             not_checked_list.remove(agentID)
         assert not not_checked_list
 
+        # status_dict has the status of each agent after the action is executed
+        # newPos_dict has the new position (including orientation) of each agent after the action is executed
         return status_dict, newPos_dict
 
 
@@ -886,7 +922,7 @@ class MAPFEnv(gym.Env):
         if IsDiagonal:
             self.action_space = spaces.Tuple([spaces.Discrete(self.num_agents), spaces.Discrete(9)])
         else:
-            self.action_space = spaces.Tuple([spaces.Discrete(self.num_agents), spaces.Discrete(5)])
+            self.action_space = spaces.Tuple([spaces.Discrete(self.num_agents), spaces.Discrete(4)]) # changed to 4 discrete actions (0-3)
 
         self.ACTION_COST, self.GOAL_REWARD, self.COLLISION_REWARD = -0.3, 5., -2.
 
@@ -939,7 +975,7 @@ class MAPFEnv(gym.Env):
             raise ValueError("Invalid agent_id given")
         return self.obs_dict
 
-    #TODO
+    # John-- working on this
     def step_all(self, movement_dict):
         """
         Agents are forced to freeze self.frozen_steps steps if they are standing on their goals.
@@ -967,9 +1003,12 @@ class MAPFEnv(gym.Env):
         for agentID in range(1, self.num_agents + 1):
             if self.isOneShot and self.world.getDone(agentID) > 0:
                 continue
-
+            
             newPos = newPos_dict[agentID]
-            self.world.state[newPos] = agentID
+            # store the cartesian position of the agent
+            new_cartesian = newPos[:2]
+            # update state only on the cartesian position
+            self.world.state[new_cartesian] = agentID
             self.world.agents[agentID].move(newPos, status_dict[agentID])
             self.give_moving_reward(agentID)
             if status_dict[agentID] == 1:
@@ -981,8 +1020,8 @@ class MAPFEnv(gym.Env):
                     self.world.agents[agentID].freeze += 1
                 else:
                     self.world.agents[agentID].status = 2
-                    self.world.state[newPos] = 0
-                    self.world.goals_map[newPos] = 0
+                    self.world.state[new_cartesian] = 0
+                    self.world.goals_map[new_cartesian] = 0
         free_agents = list(range(1, self.num_agents + 1))
 
         if put_goal_list and not self.isOneShot:
@@ -1000,19 +1039,35 @@ class MAPFEnv(gym.Env):
     def listValidActions(self, agent_ID, agent_obs):
         raise NotImplementedError
 
+    # function thats calls the expert policy
+    # TODO Needed for CBS: startL (linearized x,y position), startD (orientation 0: east, 1: south, 2: west, 3: north), 
+    # goalL (linearized goal position), cols, rows, agent (number of agents) 
     def expert_until_first_goal(self, inflation=2.0, time_limit=60.0):
+        # get 2D world, width, height
         world = self.getObstacleMap()
+        width = world.shape[1]
+        height = world.shape[0]
+        # flatten the world (linearize) for compatibility with CBS
+        world = world.flatten()
         start_positions = []
+        start_directions = []
         goals = []
         start_positions_dir = self.getPositions()
         goals_dir = self.getGoals()
+        # get the linearized start positions, start directions, and goals
         for i in range(1, self.world.num_agents + 1):
-            start_positions.append(start_positions_dir[i])
-            goals.append(goals_dir[i])
-        mstar_path = None
+            linearized_pos = start_positions_dir[i][0] * width + start_positions_dir[i][1]
+            start_positions.append(linearized_pos)
+            start_directions.append(start_positions_dir[i][2])
+            
+            linearized_goal = goals_dir[i][0] * width + goals_dir[i][1]
+            goals.append(linearized_goal)
+        expert_path = None
         start_time = time.time()
         try:
-            mstar_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit / 5.0)
+            # C++ call of expert policy
+            expert_path = cbs_py.findPath_new(world, start_positions, start_directions, goals, width, height, self.world.num_agents)
+            # expert_path = cpp_mstar.find_path(world, start_positions, goals, inflation, time_limit / 5.0)
 
         except OutOfTimeError:
             # M* timed out
@@ -1029,27 +1084,28 @@ class MAPFEnv(gym.Env):
         except:
             c_time = time.time() - start_time
             if c_time > time_limit:
-                return mstar_path  # should be None
+                return expert_path  # should be None
 
-            # print("cpp_mstar crash most likely... trying python mstar instead")
-            try:
-                mstar_path = od_mstar.find_path(world, start_positions, goals,
-                                                inflation=inflation, time_limit=time_limit - c_time)
-            except OutOfTimeError:
-                # M* timed out
-                print("timeout")
-                print('World', world)
-                print('Start Pos', start_positions)
-                print('Goals', goals)
-            except NoSolutionError:
-                print("nosol????")
-                print('World', world)
-                print('Start Pos', start_positions)
-                print('Goals', goals)
-            except:
-                print("Unknown bug?!")
+            # # print("cpp_mstar crash most likely... trying python mstar instead")
+            # try:
+            #     
+            #     expert_path = od_mstar.find_path(world, start_positions, goals,
+            #                                     inflation=inflation, time_limit=time_limit - c_time)
+            # except OutOfTimeError:
+            #     # M* timed out
+            #     print("timeout")
+            #     print('World', world)
+            #     print('Start Pos', start_positions)
+            #     print('Goals', goals)
+            # except NoSolutionError:
+            #     print("nosol????")
+            #     print('World', world)
+            #     print('Start Pos', start_positions)
+            #     print('Goals', goals)
+            # except:
+            #     print("Unknown bug?!")
 
-        return mstar_path
+        return expert_path
 
     def _add_rendering_entry(self, entry, permanent=False):
         if permanent:
@@ -1070,6 +1126,32 @@ class MAPFEnv(gym.Env):
                 rect.set_color(fill[0], fill[1], fill[2])
                 rect.add_attr(rendering.Transform())
                 return rect
+
+            def create_rectangle_with_direction(x, y, dir, width, height, fill):
+                create_rectangle(x, y, width, height, fill)
+                # add superimposed direction indicator
+                # define four points (0:E, 1:S, 2:W, 3:N) of the rectangle
+                pN = (x + width / 2, y)
+                pS = (x + width / 2, y + height)
+                pE = (x + width, y + height / 2)
+                pW = (x, y + height / 2)
+
+                if dir == 0:
+                    poly = rendering.FilledPolygon([pE, pN, pS])
+                elif dir == 1:
+                    poly = rendering.FilledPolygon([pS, pE, pW])
+                elif dir == 2:
+                    poly = rendering.FilledPolygon([pW, pS, pN])
+                elif dir == 3:
+                    poly = rendering.FilledPolygon([pN, pW, pE])
+                
+                arrow_color = darken_color(fill)
+                poly.set_color(arrow_color[0], arrow_color[1], arrow_color[2])
+                poly.add_attr(rendering.Transform())
+                return poly
+
+            def darken_color(color):  
+                return tuple([c * 0.8 for c in color])
 
             def drawStar(centerX, centerY, diameter, numPoints, color):
                 entry_list = []
@@ -1135,14 +1217,15 @@ class MAPFEnv(gym.Env):
                             self._add_rendering_entry(rect, permanent=True)
                             write = False
             for agent in range(1, num_agents + 1):
-                i, j = agents_dict[agent]
+                i, j = agents_dict[agent][:2] # ! check if this line is indexed correctly
+                dir = agents_dict[agent][2]
                 x = i * world_size
                 y = j * world_size
                 color = colors[state_map[i, j]]
-                rect = create_rectangle(x, y, world_size, world_size, color)
+                rect = create_rectangle_with_direction(x, y, dir, world_size, world_size, color)
                 self._add_rendering_entry(rect)
 
-                i, j = goals_dict[agent]
+                i, j = goals_dict[agent][:2]
                 x = i * world_size
                 y = j * world_size
                 color = colors[agent]
@@ -1186,7 +1269,7 @@ if __name__ == "__main__":
                                                       wall_components=(3, 8), obstacle_density=(0.5, 0.7)),
                          IsDiagonal=False)
         for agentID in range(1, n_agents + 1):
-            pos = env.world.agents[agentID].position
+            pos = env.world.agents[agentID].position[:2]
             goal = env.world.agents[agentID].goal_pos
             assert agentID == env.world.state[pos]
             assert agentID == env.world.goals_map[goal]

@@ -344,6 +344,7 @@ class Worker():
             # gradients are accessed by the runner in self.allGradients
         return
 
+    #! This function needs to be looked at
     # Used for imitation learning
     def parse_path(self, episode_count):
         """needed function to take the path generated from M* and create the

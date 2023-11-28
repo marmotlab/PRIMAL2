@@ -25,7 +25,7 @@ class Primal2Observer(ObservationBuilder):
     def get_next_positions(self, agent_id):
         agent_pos = self.world.getPos(agent_id)
         positions = []
-        current_pos = [agent_pos[0], agent_pos[1]]
+        current_pos = [agent_pos[0], agent_pos[1]] #might need changing? -A
         next_positions = self.world.blank_env_valid_neighbor(current_pos[0], current_pos[1])
         for position in next_positions:
             if position is not None and position != agent_pos:

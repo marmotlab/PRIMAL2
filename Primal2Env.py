@@ -15,6 +15,7 @@ from gym import spaces
 '''
 
 ## New Action Space: {0,1,2,3} -> {static, forward, CW, CCW}
+## New Orientation: {0, 1, 2, 3}: 0: east, 1: south, 2: west, 3: north
 
 
 class Primal2Env(MAPFEnv):
@@ -105,6 +106,7 @@ class Primal2Env(MAPFEnv):
                         available_actions.append(dir2action(temp_action[0], temp_action[1]))
 
                     # TODO What does corridors[ID][Endpoints] ==1 mean... end of a corridor? 
+                    #THIS ELIF statement should never get called - you should always be able to turn around if you can exist at current pos
                     elif len(self.world.corridors[corridor_id]['EndPoints']) == 1 and possible_position is not None \
                             and possible_moves.count(None) == 3: # where there is only 1 possible move and 3 "None" returned 
                         temp_action = (tuple_minus(possible_position, pos))

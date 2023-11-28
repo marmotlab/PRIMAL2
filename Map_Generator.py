@@ -145,6 +145,7 @@ def maze_generator(env_size=(10, 70), wall_components=(1, 8), obstacle_density=N
                             x, y = x_, y_
         return Z
 
+    # returns a numpy array
     def generator():
         # randomize the world RANDOMIZE THE STATIC OBSTACLES obstacle_density =
         # np.random.triangular(obstacle_density[0], .33 * obstacle_density[0] + .66 * obstacle_density[1],
